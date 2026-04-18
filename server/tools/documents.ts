@@ -6,6 +6,7 @@ import documentMover from "@server/commands/documentMover";
 import documentUpdater from "@server/commands/documentUpdater";
 import { Op } from "sequelize";
 import { Collection, Document } from "@server/models";
+import { DocumentHelper } from "@server/models/helpers/DocumentHelper";
 import { sequelize } from "@server/storage/database";
 import { authorize } from "@server/policies";
 import { presentDocument, presentNavigationNode } from "@server/presenters";
@@ -24,6 +25,15 @@ import { TextEditMode } from "@shared/types";
 import { CacheHelper } from "@server/utils/CacheHelper";
 import { RedisPrefixHelper } from "@server/utils/RedisPrefixHelper";
 import SearchProviderManager from "@server/utils/SearchProviderManager";
+
+const patchSchema = z.object({
+  findText: z
+    .string()
+    .describe(
+      "The exact markdown substring to find in the document. Copy verbatim from the document's existing markdown; the first occurrence will be replaced."
+    ),
+  text: z.string().describe("The replacement markdown for the matched text."),
+});
 
 /**
  * Registers document-related MCP tools on the given server, filtered by
@@ -502,7 +512,7 @@ export function documentTools(server: McpServer, scopes: string[]) {
       {
         title: "Update document",
         description:
-          'Updates an existing document by its ID. Only the fields provided will be updated. IMPORTANT: When editing an existing document\'s content, always prefer editMode "patch" with findText and text — this surgically replaces only the matched section and preserves all rich formatting (highlights, comments, table widths, etc) in the rest of the document. Using "replace" will overwrite the entire document and lose any formatting that cannot be represented in markdown.',
+          'Updates an existing document by its ID. Only the fields provided will be updated. IMPORTANT: When editing an existing document\'s content, always prefer editMode "patch" with findText and text — this surgically replaces only the matched section and preserves all rich formatting (highlights, comments, table widths, etc) in the rest of the document. Using "replace" will overwrite the entire document and lose any formatting that cannot be represented in markdown. For batched edits, prefer multi_patch_document over repeated calls. For lossless round-trips of node-level attributes (e.g. table cell colors, column widths, image dimensions) that markdown cannot express, pass `data` (ProseMirror JSON) instead of `text`, optionally combined with `disableSmartTypography: true` for exact-byte preservation.',
         annotations: {
           idempotentHint: true,
           readOnlyHint: false,
@@ -519,7 +529,26 @@ export function documentTools(server: McpServer, scopes: string[]) {
             .string()
             .optional()
             .describe(
-              'The markdown content to apply. In "replace" mode this becomes the entire document. In "append"/"prepend" mode it is added to the end/beginning. In "patch" mode this is the replacement text for the matched findText.'
+              'The markdown content to apply. In "replace" mode this becomes the entire document. In "append"/"prepend" mode it is added to the end/beginning. In "patch" mode this is the replacement text for the matched findText. Mutually exclusive with `data` and `patches`.'
+            ),
+          data: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .describe(
+              "A full ProseMirror JSON document to replace the document content. Use this for lossless round-trips of node-level attributes that markdown cannot express. Mutually exclusive with `text` and `patches`."
+            ),
+          disableSmartTypography: z
+            .boolean()
+            .optional()
+            .describe(
+              "When true, smart (curly) quotes are NOT normalized to straight quotes during patch lookup. Pass this when the caller's findText contains the original curly-quote characters and must match them verbatim."
+            ),
+          patches: z
+            .array(patchSchema)
+            .max(50)
+            .optional()
+            .describe(
+              "Multiple find/replace patches applied atomically in a single transaction. Prefer multi_patch_document for this use case. Mutually exclusive with `text` and `data`."
             ),
           editMode: z
             .enum(TextEditMode)
@@ -610,6 +639,216 @@ export function documentTools(server: McpServer, scopes: string[]) {
               },
             ],
           } satisfies CallToolResult;
+        } catch (message) {
+          return error(message);
+        }
+      })
+    );
+  }
+
+  if (AuthenticationHelper.canAccess("documents.info", scopes)) {
+    server.registerTool(
+      "get_document_data",
+      {
+        title: "Get document ProseMirror JSON",
+        description:
+          "Returns the document content as ProseMirror JSON. Use when you need to see or round-trip node-level attributes (table cell colors, column widths, image dimensions) that markdown cannot express.",
+        annotations: {
+          idempotentHint: true,
+          readOnlyHint: true,
+        },
+        inputSchema: {
+          documentId: z
+            .string()
+            .describe("The unique identifier of the document to inspect."),
+        },
+      },
+      withTracing("get_document_data", async ({ documentId }, extra) => {
+        try {
+          const user = getActorFromContext(extra);
+
+          const document = await Document.findByPk(documentId, {
+            userId: user.id,
+            rejectOnEmpty: true,
+          });
+          authorize(user, "read", document);
+
+          const data = await DocumentHelper.toJSON(document, {
+            teamId: user.teamId,
+          });
+          return success({ data });
+        } catch (message) {
+          return error(message);
+        }
+      })
+    );
+
+    server.registerTool(
+      "list_document_blocks",
+      {
+        title: "List top-level document blocks",
+        description:
+          "Returns every top-level block with a positional index and a content hash. Use this to plan surgical edits when you want to touch one block without re-sending the whole document. The returned contentHash can be passed to update_document_block for optimistic concurrency.",
+        annotations: {
+          idempotentHint: true,
+          readOnlyHint: true,
+        },
+        inputSchema: {
+          documentId: z
+            .string()
+            .describe("The unique identifier of the document to inspect."),
+        },
+      },
+      withTracing("list_document_blocks", async ({ documentId }, extra) => {
+        try {
+          const user = getActorFromContext(extra);
+
+          const document = await Document.findByPk(documentId, {
+            userId: user.id,
+            rejectOnEmpty: true,
+          });
+          authorize(user, "read", document);
+
+          const blocks = DocumentHelper.getBlocks(document);
+          return success({ blocks });
+        } catch (message) {
+          return error(message);
+        }
+      })
+    );
+  }
+
+  if (AuthenticationHelper.canAccess("documents.update", scopes)) {
+    server.registerTool(
+      "update_document_block",
+      {
+        title: "Update a single document block",
+        description:
+          "Replace a single top-level block by its index. Provide either `data` (ProseMirror JSON) or `text` (markdown that resolves to exactly one block node), but not both. Pass `contentHash` (from list_document_blocks) for optimistic concurrency — the update is rejected if the block has changed since you listed it.",
+        annotations: {
+          idempotentHint: false,
+          readOnlyHint: false,
+        },
+        inputSchema: {
+          documentId: z
+            .string()
+            .describe("The unique identifier of the document to update."),
+          blockIndex: z
+            .number()
+            .int()
+            .min(0)
+            .describe(
+              "Zero-based index of the top-level block to replace, as returned by list_document_blocks."
+            ),
+          contentHash: z
+            .string()
+            .optional()
+            .describe(
+              "Optional 8-char content hash from list_document_blocks. If provided and the block has since changed, the update is rejected."
+            ),
+          data: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .describe(
+              "ProseMirror JSON for the replacement block. Mutually exclusive with `text`."
+            ),
+          text: z
+            .string()
+            .optional()
+            .describe(
+              "Markdown for the replacement block; must resolve to exactly one top-level block node. Mutually exclusive with `data`."
+            ),
+        },
+      },
+      withTracing("update_document_block", async (input, context) => {
+        try {
+          const ctx = buildAPIContext(context);
+          const { user } = ctx.state.auth;
+
+          return await sequelize.transaction(async (transaction) => {
+            const document = await Document.findByPk(input.documentId, {
+              userId: user.id,
+              includeState: true,
+              rejectOnEmpty: true,
+              transaction,
+            });
+            authorize(user, "update", document);
+
+            DocumentHelper.updateBlock(document, input.blockIndex, {
+              data: input.data,
+              text: input.text,
+              contentHash: input.contentHash,
+            });
+            await document.save({ transaction });
+
+            return success(
+              pathToUrl(
+                user.team,
+                await presentDocument(undefined, document, {
+                  includeData: false,
+                  includeText: false,
+                  includeUpdatedAt: true,
+                })
+              )
+            );
+          });
+        } catch (message) {
+          return error(message);
+        }
+      })
+    );
+
+    server.registerTool(
+      "multi_patch_document",
+      {
+        title: "Apply multiple patches atomically",
+        description:
+          "Apply multiple find/replace patches atomically in a single transaction. All patches must match; any miss aborts the whole operation. Prefer this over calling update_document repeatedly for batched agent edits. Each findText matches its first occurrence in the document's normalized markdown; to target a later occurrence, include more surrounding context.",
+        annotations: {
+          idempotentHint: false,
+          readOnlyHint: false,
+        },
+        inputSchema: {
+          documentId: z
+            .string()
+            .describe("The unique identifier of the document to patch."),
+          patches: z
+            .array(patchSchema)
+            .min(1)
+            .max(50)
+            .describe(
+              "An array of up to 50 find/replace patches to apply atomically."
+            ),
+        },
+      },
+      withTracing("multi_patch_document", async (input, context) => {
+        try {
+          const ctx = buildAPIContext(context);
+          const { user } = ctx.state.auth;
+
+          return await sequelize.transaction(async (transaction) => {
+            const document = await Document.findByPk(input.documentId, {
+              userId: user.id,
+              includeState: true,
+              rejectOnEmpty: true,
+              transaction,
+            });
+            authorize(user, "update", document);
+
+            DocumentHelper.applyMultiPatch(document, input.patches);
+            await document.save({ transaction });
+
+            return success(
+              pathToUrl(
+                user.team,
+                await presentDocument(undefined, document, {
+                  includeData: false,
+                  includeText: false,
+                  includeUpdatedAt: true,
+                })
+              )
+            );
+          });
         } catch (message) {
           return error(message);
         }
