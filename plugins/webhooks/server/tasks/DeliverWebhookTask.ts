@@ -1,3 +1,4 @@
+import { diffLines } from "diff";
 import { FetchError } from "node-fetch";
 import { Op } from "sequelize";
 import { colorPalette } from "@shared/utils/collections";
@@ -595,6 +596,18 @@ export default class DeliverWebhookTask extends BaseTask<Props> {
       paranoid: false,
     });
 
+    const previousRevision = await Revision.findOne({
+      where: { documentId: event.documentId },
+      order: [["createdAt", "DESC"]],
+      offset: 1,
+    });
+
+    const changes = this.computeDocumentChanges(
+      subscription,
+      previousRevision,
+      model
+    );
+
     await this.sendWebhook({
       event,
       subscription,
@@ -606,8 +619,67 @@ export default class DeliverWebhookTask extends BaseTask<Props> {
             includeData: true,
             includeText: true,
           })),
+        ...(changes !== undefined ? { changes } : {}),
       },
     });
+  }
+
+  /**
+   * Computes a line-level diff between a previous revision and the current
+   * document text. Returns undefined when the subscription has not opted in,
+   * when no previous revision exists, or when either text value is unavailable.
+   *
+   * @param subscription The webhook subscription, checked for opt-in flag.
+   * @param previousRevision The previous revision, or null if none exists.
+   * @param document The current document model, or null if deleted.
+   * @returns a changes summary, or undefined when not applicable.
+   */
+  private computeDocumentChanges(
+    subscription: WebhookSubscription,
+    previousRevision: Revision | null,
+    document: Document | null
+  ): { added: string[]; removed: string[] } | undefined {
+    if (!subscription.includeChanges) {
+      return undefined;
+    }
+
+    if (!previousRevision || !document) {
+      return undefined;
+    }
+
+    const previousText = previousRevision.text ?? "";
+    const currentText = document.text ?? "";
+
+    const hunks = diffLines(previousText, currentText);
+
+    const added: string[] = [];
+    const removed: string[] = [];
+
+    for (const hunk of hunks) {
+      if (hunk.added) {
+        const lines = hunk.value
+          .split("\n")
+          .filter((line) => line.length > 0);
+        added.push(...lines);
+      } else if (hunk.removed) {
+        const lines = hunk.value
+          .split("\n")
+          .filter((line) => line.length > 0);
+        removed.push(...lines);
+      }
+    }
+
+    const changes = { added, removed };
+
+    const serialized = JSON.stringify(changes);
+    if (serialized.length > 50_000) {
+      return {
+        added: ["(truncated)"],
+        removed: [],
+      };
+    }
+
+    return changes;
   }
 
   private async handleDocumentUserEvent(

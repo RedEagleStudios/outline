@@ -1338,6 +1338,73 @@ describe("documentUpdater", () => {
       expect(blockquote.content![1]).toEqual(secondPara);
     });
 
+    it("should patch document with curly quotes using straight-quote findText", async () => {
+      const user = await buildUser();
+      let document = await buildDocument({
+        teamId: user.teamId,
+      });
+
+      // Set document content with a right single quotation mark (U+2019)
+      document.content = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "It\u2019s a test" },
+            ],
+          },
+        ],
+      };
+      await document.save();
+
+      // toMarkdown normalizes curly quotes → straight quotes
+      const fetchedMarkdown = await DocumentHelper.toMarkdown(document, {
+        includeTitle: false,
+      });
+      // Confirm toMarkdown produced a straight apostrophe
+      expect(fetchedMarkdown).toContain("It's a test");
+
+      // Use a substring of the fetched (straight-quote) markdown as findText
+      const findText = "It's a test";
+
+      // The patch path must also normalize, so indexOf succeeds
+      document = await withAPIContext(user, (ctx) =>
+        documentUpdater(ctx, {
+          text: "It's done",
+          findText,
+          document,
+          editMode: TextEditMode.Patch,
+        })
+      );
+
+      expect(document.text).toContain("done");
+    });
+
+    it("should patch document that already has straight quotes without regression", async () => {
+      const user = await buildUser();
+      let document = await buildDocument({
+        teamId: user.teamId,
+        text: "Hello world",
+      });
+
+      const fetchedMarkdown = await DocumentHelper.toMarkdown(document, {
+        includeTitle: false,
+      });
+      expect(fetchedMarkdown).toContain("Hello world");
+
+      document = await withAPIContext(user, (ctx) =>
+        documentUpdater(ctx, {
+          text: "Hello earth",
+          findText: "Hello world",
+          document,
+          editMode: TextEditMode.Patch,
+        })
+      );
+
+      expect(document.text).toContain("earth");
+    });
+
     it("should always patch the first occurrence when findText appears multiple times", async () => {
       const user = await buildUser();
       let document = await buildDocument({
@@ -1460,6 +1527,282 @@ describe("documentUpdater", () => {
       expect(list.content![1].content![0].content![0].text).toEqual(
         "Second item"
       );
+    });
+
+    it("should return fuzzy suggestions when findText has a 1-char typo", async () => {
+      const user = await buildUser();
+      const document = await buildDocument({
+        teamId: user.teamId,
+      });
+
+      // Document contains "playar's head" (typo 'a' instead of 'e')
+      document.content = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "playar's head" }],
+          },
+        ],
+      };
+      await document.save();
+
+      let thrownError: Error & { suggestions?: unknown } | undefined;
+      try {
+        await withAPIContext(user, (ctx) =>
+          documentUpdater(ctx, {
+            text: "replacement",
+            findText: "player's head",
+            document,
+            editMode: TextEditMode.Patch,
+          })
+        );
+      } catch (err) {
+        thrownError = err as Error & { suggestions?: unknown };
+      }
+
+      expect(thrownError).toBeDefined();
+      expect(thrownError!.message).toContain(
+        "The specified text was not found in the document"
+      );
+      const suggestions = thrownError!.suggestions as Array<{
+        offset: number;
+        text: string;
+        distance: number;
+      }>;
+      expect(Array.isArray(suggestions)).toBe(true);
+      expect(suggestions.length).toBeGreaterThan(0);
+      // The closest suggestion should point to the typo text with distance 1
+      expect(suggestions[0].distance).toBe(1);
+      expect(suggestions[0].text).toBe("playar's head");
+    });
+
+    it("should return empty suggestions when findText is completely unrelated", async () => {
+      const user = await buildUser();
+      const document = await buildDocument({
+        teamId: user.teamId,
+        text: "Hello world",
+      });
+
+      let thrownError: Error & { suggestions?: unknown } | undefined;
+      try {
+        await withAPIContext(user, (ctx) =>
+          documentUpdater(ctx, {
+            text: "replacement",
+            findText:
+              "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod",
+            document,
+            editMode: TextEditMode.Patch,
+          })
+        );
+      } catch (err) {
+        thrownError = err as Error & { suggestions?: unknown };
+      }
+
+      expect(thrownError).toBeDefined();
+      const suggestions = thrownError!.suggestions as Array<unknown>;
+      expect(Array.isArray(suggestions)).toBe(true);
+      expect(suggestions).toHaveLength(0);
+    });
+
+    it("should succeed with curly-quote findText when disableSmartTypography is true", async () => {
+      const user = await buildUser();
+      let document = await buildDocument({
+        teamId: user.teamId,
+      });
+
+      // Document contains a right single quotation mark (U+2019)
+      document.content = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "player\u2019s head" }],
+          },
+        ],
+      };
+      await document.save();
+
+      // With disableSmartTypography the patch path does NOT normalize quotes,
+      // so findText must use the original curly quote to match.
+      document = await withAPIContext(user, (ctx) =>
+        documentUpdater(ctx, {
+          text: "player\u2019s body",
+          findText: "player\u2019s head",
+          document,
+          editMode: TextEditMode.Patch,
+          disableSmartTypography: true,
+        })
+      );
+
+      expect(document.text).toContain("player\u2019s body");
+    });
+
+    it("should succeed with straight-quote findText when disableSmartTypography is not set", async () => {
+      const user = await buildUser();
+      let document = await buildDocument({
+        teamId: user.teamId,
+      });
+
+      // Document contains a right single quotation mark (U+2019)
+      document.content = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "player\u2019s head" }],
+          },
+        ],
+      };
+      await document.save();
+
+      // Without the flag, normalization converts the curly quote to a straight
+      // quote, so a straight-quote findText still matches.
+      document = await withAPIContext(user, (ctx) =>
+        documentUpdater(ctx, {
+          text: "player's body",
+          findText: "player's head",
+          document,
+          editMode: TextEditMode.Patch,
+        })
+      );
+
+      expect(document.text).toContain("body");
+    });
+
+    it("should return empty suggestions when findText exceeds the length guard", async () => {
+      const user = await buildUser();
+      const document = await buildDocument({
+        teamId: user.teamId,
+        text: "Hello world",
+      });
+
+      // Build a findText longer than 500 characters
+      const longFindText = "a".repeat(501);
+
+      let thrownError: Error & { suggestions?: unknown } | undefined;
+      try {
+        await withAPIContext(user, (ctx) =>
+          documentUpdater(ctx, {
+            text: "replacement",
+            findText: longFindText,
+            document,
+            editMode: TextEditMode.Patch,
+          })
+        );
+      } catch (err) {
+        thrownError = err as Error & { suggestions?: unknown };
+      }
+
+      expect(thrownError).toBeDefined();
+      const suggestions = thrownError!.suggestions as Array<unknown>;
+      expect(Array.isArray(suggestions)).toBe(true);
+      expect(suggestions).toHaveLength(0);
+    });
+  });
+
+  describe("patches (multi-patch)", () => {
+    it("should apply two non-overlapping patches atomically", async () => {
+      const user = await buildUser();
+      let document = await buildDocument({
+        teamId: user.teamId,
+        text: "Hello world\n\nGoodbye world",
+      });
+
+      document = await withAPIContext(user, (ctx) =>
+        documentUpdater(ctx, {
+          document,
+          patches: [
+            { findText: "Hello world", text: "Hello earth" },
+            { findText: "Goodbye world", text: "Goodbye earth" },
+          ],
+        })
+      );
+
+      expect(document.text).toContain("Hello earth");
+      expect(document.text).toContain("Goodbye earth");
+      expect(document.text).not.toContain("Hello world");
+      expect(document.text).not.toContain("Goodbye world");
+    });
+
+    it("should find patch B against original markdown, not the modified version", async () => {
+      const user = await buildUser();
+      let document = await buildDocument({
+        teamId: user.teamId,
+        text: "Alpha section\n\nBeta section",
+      });
+
+      // Patch A replaces "Alpha section" with text that contains "Beta section"
+      // Patch B looks for "Beta section" — it must find it in the original, not
+      // inside patch A's replacement text.
+      document = await withAPIContext(user, (ctx) =>
+        documentUpdater(ctx, {
+          document,
+          patches: [
+            { findText: "Alpha section", text: "Alpha: Beta section copy" },
+            { findText: "Beta section", text: "Beta updated" },
+          ],
+        })
+      );
+
+      // Both patches are resolved against the original markdown, applied
+      // right-to-left.  The original "Beta section" (offset ~14) gets
+      // replaced, and patch A's replacement text is left untouched.
+      expect(document.text).toContain("Alpha: Beta section copy");
+      expect(document.text).toContain("Beta updated");
+    });
+
+    it("should reject overlapping patches with a ValidationError", async () => {
+      const user = await buildUser();
+      const document = await buildDocument({
+        teamId: user.teamId,
+        text: "Hello beautiful world",
+      });
+
+      await expect(
+        withAPIContext(user, (ctx) =>
+          documentUpdater(ctx, {
+            document,
+            patches: [
+              // "Hello beautiful world" and "beautiful world" overlap
+              { findText: "Hello beautiful world", text: "Hi there" },
+              { findText: "beautiful world", text: "nice world" },
+            ],
+          })
+        )
+      ).rejects.toThrow("Patches overlap");
+    });
+
+    it("should abort all patches when one findText is not found", async () => {
+      const user = await buildUser();
+      const initialText = "First paragraph\n\nSecond paragraph";
+      let document = await buildDocument({
+        teamId: user.teamId,
+        text: initialText,
+      });
+      const originalId = document.id;
+
+      await expect(
+        withAPIContext(user, (ctx) =>
+          documentUpdater(ctx, {
+            document,
+            patches: [
+              // first patch matches…
+              { findText: "First paragraph", text: "First updated" },
+              // …second patch does not
+              { findText: "Nonexistent text xyz", text: "whatever" },
+            ],
+          })
+        )
+      ).rejects.toThrow("The specified text was not found in the document");
+
+      // Reload from DB and verify neither patch was applied
+      const { Document: DocumentModel } = await import("@server/models");
+      const reloaded = await DocumentModel.findByPk(originalId, {
+        rejectOnEmpty: true,
+      });
+      expect(reloaded.text).toContain("First paragraph");
+      expect(reloaded.text).not.toContain("First updated");
     });
   });
 });

@@ -4,6 +4,16 @@ import type { Event } from "@server/types";
 export interface WebhookPayload {
   model: Record<string, unknown> | null;
   id: string;
+  /**
+   * A summary of content changes in this event. Present only for document
+   * events when the subscriber has opted in. Populated in Wave C (diff
+   * enrichment); declared here so the type is available to all webhook
+   * plumbing in Wave A.
+   */
+  changes?: {
+    added: string[];
+    removed: string[];
+  };
   [key: string]: unknown;
 }
 

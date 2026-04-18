@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { JSDOM } from "jsdom";
 import { Node, Fragment, type NodeType } from "prosemirror-model";
 import ukkonen from "ukkonen";
@@ -13,7 +14,7 @@ import type { NavigationNode, ProsemirrorData } from "@shared/types";
 import { IconType, TextEditMode } from "@shared/types";
 import { determineIconType } from "@shared/utils/icon";
 import { parser, serializer, schema } from "@server/editor";
-import { ValidationError } from "@server/errors";
+import { FindTextNotFoundError, ValidationError } from "@server/errors";
 import { addTags } from "@server/logging/tracer";
 import { trace } from "@server/logging/tracing";
 import type { Template } from "@server/models";
@@ -46,6 +47,22 @@ interface PatchContext {
   nodeMdTo: number;
   /** The markdown replacement text. */
   replacementText: string;
+}
+
+/** Information about a single top-level block node in a document. */
+export interface BlockInfo {
+  /** Zero-based positional index of the block among top-level children. */
+  index: number;
+  /** ProseMirror node type name, e.g. "paragraph", "heading", "bullet_list". */
+  type: string;
+  /** Plain-text content of the block. */
+  textContent: string;
+  /** Node attrs map. */
+  attrs: Record<string, unknown>;
+  /** 8-char hex MD5 of the block's ProseMirror JSON, for optimistic concurrency. */
+  contentHash: string;
+  /** Full ProseMirror JSON for the block node. */
+  data: Record<string, unknown>;
 }
 
 type HTMLOptions = {
@@ -169,6 +186,28 @@ export class DocumentHelper {
   }
 
   /**
+   * Normalizes smart (curly) quotes in a markdown string to their straight-quote
+   * equivalents. This is applied on both the export path (`toMarkdown`) and the
+   * patch path (`applyMarkdownToDocument`) so that `findText` lookups are
+   * deterministic regardless of which path produced the markdown.
+   *
+   * Only 1:1 character substitutions are performed so that position offsets
+   * produced by `serializeWithPositions` remain valid after normalization.
+   * The `\` newline replacement (which changes string length) must NOT be
+   * included here; it stays in `toMarkdown` only.
+   *
+   * @param text The markdown string to normalize.
+   * @returns The markdown string with smart quotes replaced by straight quotes.
+   */
+  static normalizeMarkdown(text: string): string {
+    return text
+      .replace(/\u201C/g, '"')
+      .replace(/\u201D/g, '"')
+      .replace(/\u2018/g, "'")
+      .replace(/\u2019/g, "'");
+  }
+
+  /**
    * Returns the document as plain text. This method uses the
    * collaborative state if available, otherwise it falls back to Markdown.
    *
@@ -196,6 +235,12 @@ export class DocumentHelper {
       signedUrls?: number;
       /** The team context */
       teamId?: string;
+      /**
+       * When true, smart (curly) quotes are NOT normalized to straight quotes in the
+       * serialized output. Useful for agents performing exact-byte round-trips that
+       * need to preserve the original quote characters.
+       */
+      disableSmartTypography?: boolean;
     }
   ) {
     let node = DocumentHelper.toProsemirror(document);
@@ -209,14 +254,15 @@ export class DocumentHelper {
       node = Node.fromJSON(schema, data);
     }
 
-    const text = serializer
+    const serialized = serializer
       .serialize(node)
-      .replace(/(^|\n)\\(\n|$)/g, "\n\n")
-      .replace(/“/g, '"')
-      .replace(/”/g, '"')
-      .replace(/‘/g, "'")
-      .replace(/’/g, "'")
-      .trim();
+      .replace(/(^|\n)\\(\n|$)/g, "\n\n");
+
+    const text = (
+      options?.disableSmartTypography
+        ? serialized
+        : DocumentHelper.normalizeMarkdown(serialized)
+    ).trim();
 
     if (
       (document instanceof Collection ||
@@ -504,13 +550,17 @@ export class DocumentHelper {
    * @param text The markdown to apply
    * @param editMode The edit mode to use: "replace" (default), "append", "prepend", or "patch"
    * @param findText The markdown text to find when using "patch" edit mode
+   * @param disableSmartTypography When true, skips normalizing smart (curly) quotes on the patch
+   *   path. Pass this when the caller's `findText` already contains the original curly-quote
+   *   characters and must match them verbatim rather than after normalization.
    * @returns The document
    */
   static applyMarkdownToDocument(
     document: Document,
     text: string,
     editMode: TextEditMode = TextEditMode.Replace,
-    findText?: string
+    findText?: string,
+    disableSmartTypography?: boolean
   ) {
     let doc: Node;
 
@@ -522,13 +572,16 @@ export class DocumentHelper {
       }
 
       const existingDoc = DocumentHelper.toProsemirror(document);
-      const { markdown, blockMap } =
+      const { markdown: rawMarkdown, blockMap } =
         serializer.serializeWithPositions(existingDoc);
+      const markdown = disableSmartTypography
+        ? rawMarkdown
+        : DocumentHelper.normalizeMarkdown(rawMarkdown);
 
       const matchIndex = markdown.indexOf(findText);
       if (matchIndex === -1) {
-        throw ValidationError(
-          "The specified text was not found in the document"
+        throw FindTextNotFoundError(
+          DocumentHelper.findTextSuggestions(findText, markdown)
         );
       }
       const matchEnd = matchIndex + findText.length;
@@ -639,28 +692,312 @@ export class DocumentHelper {
     document.content = doc.toJSON();
     document.text = serializer.serialize(doc);
 
-    if (document.state) {
-      const ydoc = new Y.Doc();
-      Y.applyUpdate(ydoc, document.state);
-      const type = ydoc.get("default", Y.XmlFragment) as Y.XmlFragment;
-
-      if (!type.doc) {
-        throw new Error("type.doc not found");
-      }
-
-      // apply new document to existing ydoc
-      updateYFragment(type.doc, type, doc, {
-        mapping: new Map(),
-        isOMark: new Map(),
-      });
-
-      const state = Y.encodeStateAsUpdate(ydoc);
-
-      document.state = Buffer.from(state);
-      document.changed("state", true);
-    }
+    DocumentHelper.syncYjsState(document, doc);
 
     return document;
+  }
+
+  /**
+   * Applies a ProseMirror JSON document to the given document, updating its
+   * content, plain-text representation, and Yjs collaborative state. The
+   * caller is responsible for persisting the document.
+   *
+   * @param document The document to update.
+   * @param data The ProseMirror JSON object to apply.
+   * @returns The modified document (not yet saved).
+   * @throws ValidationError if the JSON is not a valid ProseMirror document.
+   */
+  static applyProsemirrorDataToDocument(
+    document: Document,
+    data: ProsemirrorData | Record<string, unknown>
+  ): Document {
+    let doc: Node;
+    try {
+      doc = Node.fromJSON(schema, data);
+    } catch (err) {
+      throw ValidationError(
+        err instanceof Error ? err.message : "Invalid ProseMirror document"
+      );
+    }
+
+    document.content = doc.toJSON();
+    document.text = serializer.serialize(doc);
+
+    DocumentHelper.syncYjsState(document, doc);
+
+    return document;
+  }
+
+  /**
+   * Synchronizes a document's Yjs collaborative state with the given
+   * ProseMirror node. No-op when `document.state` is null (non-collaborative
+   * document). When present, the Yjs fragment is updated in place and
+   * `document.state` is re-encoded.
+   *
+   * @param document The document whose `state` column should be updated.
+   * @param doc The ProseMirror node to write into the Yjs fragment.
+   * @throws Error if the Yjs document cannot be resolved from the state.
+   */
+  private static syncYjsState(document: Document, doc: Node): void {
+    if (!document.state) {
+      return;
+    }
+
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, document.state);
+    const type = ydoc.get("default", Y.XmlFragment) as Y.XmlFragment;
+
+    if (!type.doc) {
+      throw new Error("type.doc not found");
+    }
+
+    // apply new document to existing ydoc
+    updateYFragment(type.doc, type, doc, {
+      mapping: new Map(),
+      isOMark: new Map(),
+    });
+
+    const state = Y.encodeStateAsUpdate(ydoc);
+
+    document.state = Buffer.from(state);
+    document.changed("state", true);
+  }
+
+  /**
+   * Applies a table cell background color change to a document's PM JSON and
+   * persists the update via {@link applyProsemirrorDataToDocument}.
+   *
+   * @param document The document to update.
+   * @param tableIndex Zero-based index of the target table.
+   * @param row Zero-based row index of the target cell.
+   * @param col Zero-based column index of the target cell.
+   * @param color Hex color to set, or `null` to clear the background.
+   * @returns The modified document (not yet saved).
+   */
+  static applyTableSetCellBackground(
+    document: Document,
+    tableIndex: number,
+    row: number,
+    col: number,
+    color: string | null
+  ): Document {
+    const current = DocumentHelper.toProsemirror(document).toJSON() as
+      | ProsemirrorData
+      | Record<string, unknown>;
+    const next = ProsemirrorHelper.setCellBackground(
+      current as ProsemirrorData,
+      tableIndex,
+      row,
+      col,
+      color
+    );
+    return DocumentHelper.applyProsemirrorDataToDocument(document, next);
+  }
+
+  /**
+   * Applies a column width change to a document's PM JSON and persists the
+   * update via {@link applyProsemirrorDataToDocument}.
+   *
+   * @param document The document to update.
+   * @param tableIndex Zero-based index of the target table.
+   * @param col Zero-based column index to resize.
+   * @param width New width in pixels (must be positive).
+   * @returns The modified document (not yet saved).
+   */
+  static applyTableSetColumnWidth(
+    document: Document,
+    tableIndex: number,
+    col: number,
+    width: number
+  ): Document {
+    const current = DocumentHelper.toProsemirror(document).toJSON() as
+      | ProsemirrorData
+      | Record<string, unknown>;
+    const next = ProsemirrorHelper.setColumnWidth(
+      current as ProsemirrorData,
+      tableIndex,
+      col,
+      width
+    );
+    return DocumentHelper.applyProsemirrorDataToDocument(document, next);
+  }
+
+  /**
+   * Merges a rectangular range of cells in a table and persists the update via
+   * {@link applyProsemirrorDataToDocument}.
+   *
+   * @param document The document to update.
+   * @param tableIndex Zero-based index of the target table.
+   * @param fromRow Top row of the merge rectangle (inclusive).
+   * @param fromCol Left column of the merge rectangle (inclusive).
+   * @param toRow Bottom row of the merge rectangle (inclusive).
+   * @param toCol Right column of the merge rectangle (inclusive).
+   * @returns The modified document (not yet saved).
+   */
+  static applyTableMergeCells(
+    document: Document,
+    tableIndex: number,
+    fromRow: number,
+    fromCol: number,
+    toRow: number,
+    toCol: number
+  ): Document {
+    const current = DocumentHelper.toProsemirror(document).toJSON() as
+      | ProsemirrorData
+      | Record<string, unknown>;
+    const next = ProsemirrorHelper.mergeCells(
+      current as ProsemirrorData,
+      tableIndex,
+      fromRow,
+      fromCol,
+      toRow,
+      toCol
+    );
+    return DocumentHelper.applyProsemirrorDataToDocument(document, next);
+  }
+
+  /**
+   * Splits a merged cell in a table and persists the update via
+   * {@link applyProsemirrorDataToDocument}.
+   *
+   * @param document The document to update.
+   * @param tableIndex Zero-based index of the target table.
+   * @param row Zero-based row index of the merged cell to split.
+   * @param col Zero-based column index of the merged cell to split.
+   * @returns The modified document (not yet saved).
+   */
+  static applyTableSplitCell(
+    document: Document,
+    tableIndex: number,
+    row: number,
+    col: number
+  ): Document {
+    const current = DocumentHelper.toProsemirror(document).toJSON() as
+      | ProsemirrorData
+      | Record<string, unknown>;
+    const next = ProsemirrorHelper.splitCell(
+      current as ProsemirrorData,
+      tableIndex,
+      row,
+      col
+    );
+    return DocumentHelper.applyProsemirrorDataToDocument(document, next);
+  }
+
+  /**
+   * Applies multiple find-and-replace patches atomically to a document. All
+   * patches are validated before any are applied — if any `findText` is not
+   * found, or if any two patches overlap, the entire operation is aborted.
+   * Patches are applied right-to-left by offset so that earlier offsets remain
+   * valid while later substitutions are being made.
+   *
+   * The caller is responsible for persisting the document.
+   *
+   * @remark Each `findText` matches its first occurrence in the normalized
+   *   markdown (mirroring the single-patch `applyMarkdownToDocument` patch
+   *   behavior). Callers needing to target a specific occurrence N should
+   *   disambiguate by including longer surrounding context in `findText`, or
+   *   split the work into multiple serial calls so that prior replacements
+   *   shift later occurrences out of the way.
+   *
+   * @param document The document to patch.
+   * @param patches An array of `{ findText, text }` objects describing each replacement.
+   * @returns The modified document (not yet saved).
+   * @throws FindTextNotFoundError if any `findText` is not present in the normalized markdown.
+   * @throws ValidationError if any two patches produce overlapping ranges.
+   */
+  static applyMultiPatch(
+    document: Document,
+    patches: Array<{ findText: string; text: string }>
+  ): Document {
+    const existingDoc = DocumentHelper.toProsemirror(document);
+    const { markdown: rawMarkdown } =
+      serializer.serializeWithPositions(existingDoc);
+    const markdown = DocumentHelper.normalizeMarkdown(rawMarkdown);
+
+    // First pass — find all match offsets. Abort on first miss.
+    const matches: Array<{
+      offset: number;
+      findText: string;
+      text: string;
+    }> = [];
+    for (const patch of patches) {
+      const offset = markdown.indexOf(patch.findText);
+      if (offset === -1) {
+        throw FindTextNotFoundError(
+          DocumentHelper.findTextSuggestions(patch.findText, markdown)
+        );
+      }
+      matches.push({ offset, findText: patch.findText, text: patch.text });
+    }
+
+    // Second pass — validate non-overlapping. Sort by offset ascending first.
+    const sorted = [...matches].sort((a, b) => a.offset - b.offset);
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1];
+      const curr = sorted[i];
+      if (prev.offset + prev.findText.length > curr.offset) {
+        throw ValidationError("Patches overlap");
+      }
+    }
+
+    // Third pass — apply right-to-left (descending offset) to preserve earlier offsets.
+    const descending = [...matches].sort((a, b) => b.offset - a.offset);
+    let newMarkdown = markdown;
+    for (const match of descending) {
+      newMarkdown =
+        newMarkdown.slice(0, match.offset) +
+        match.text +
+        newMarkdown.slice(match.offset + match.findText.length);
+    }
+
+    // Re-parse the fully patched markdown and update document state.
+    const doc = parser.parse(newMarkdown);
+
+    document.content = doc.toJSON();
+    document.text = serializer.serialize(doc);
+
+    DocumentHelper.syncYjsState(document, doc);
+
+    return document;
+  }
+
+  /**
+   * Finds fuzzy-match suggestions for a findText string that was not found
+   * verbatim in the document markdown. Uses a sliding window over the
+   * normalized markdown and the ukkonen edit-distance algorithm to collect
+   * the top-3 nearest candidates.
+   *
+   * Guards: returns an empty array when findText is longer than 500 characters
+   * or when the markdown exceeds 500,000 characters (performance protection).
+   *
+   * @param findText The text that was not found.
+   * @param markdown The already-normalized markdown string to search within.
+   * @returns up to 3 suggestions sorted by ascending edit distance.
+   */
+  private static findTextSuggestions(
+    findText: string,
+    markdown: string
+  ): Array<{ offset: number; text: string; distance: number }> {
+    if (findText.length > 500 || markdown.length > 500_000) {
+      return [];
+    }
+
+    const threshold = Math.ceil(findText.length * 0.3);
+    const windowLen = findText.length;
+    const results: Array<{ offset: number; text: string; distance: number }> =
+      [];
+
+    for (let i = 0; i <= markdown.length - windowLen; i++) {
+      const candidate = markdown.slice(i, i + windowLen);
+      const dist = ukkonen(findText, candidate, threshold + 1);
+      if (dist <= threshold) {
+        results.push({ offset: i, text: candidate, distance: dist });
+      }
+    }
+
+    results.sort((a, b) => a.distance - b.distance);
+    return results.slice(0, 3);
   }
 
   /**
@@ -1053,6 +1390,125 @@ export class DocumentHelper {
       }
     }
     return -1;
+  }
+
+  /**
+   * Returns information about each top-level block node in the document.
+   * Each entry includes the block's positional index, ProseMirror node type
+   * name, plain-text content, node attrs, an 8-hex-char content hash, and
+   * the full ProseMirror JSON for the block.
+   *
+   * @param document The document to inspect.
+   * @returns An array of BlockInfo objects, one per top-level block.
+   */
+  static getBlocks(document: Document): Array<BlockInfo> {
+    const doc = DocumentHelper.toProsemirror(document);
+    const blocks: Array<BlockInfo> = [];
+
+    doc.content.forEach((node: Node, _offset: number, index: number) => {
+      const nodeJson = node.toJSON();
+      const contentHash = createHash("md5")
+        .update(JSON.stringify(nodeJson))
+        .digest("hex")
+        .slice(0, 8);
+
+      blocks.push({
+        index,
+        type: node.type.name,
+        textContent: node.textContent,
+        attrs: { ...node.attrs },
+        contentHash,
+        data: nodeJson,
+      });
+    });
+
+    return blocks;
+  }
+
+  /**
+   * Replaces a single top-level block node in the document at the given
+   * positional index. The caller is responsible for persisting the document.
+   *
+   * @param document The document to modify.
+   * @param blockIndex Zero-based index of the top-level block to replace.
+   * @param opts Replacement options — provide either `data` (ProseMirror JSON)
+   *   or `text` (Markdown), and optionally a `contentHash` for optimistic
+   *   concurrency validation.
+   * @returns The modified document (not yet saved).
+   * @throws ValidationError if blockIndex is out of range.
+   * @throws ValidationError if contentHash is provided and does not match.
+   * @throws ValidationError if the replacement data/text is invalid.
+   */
+  static updateBlock(
+    document: Document,
+    blockIndex: number,
+    opts: { data?: object; text?: string; contentHash?: string }
+  ): Document {
+    const existingDoc = DocumentHelper.toProsemirror(document);
+    const children: Node[] = [];
+    existingDoc.content.forEach((child: Node) => children.push(child));
+
+    if (blockIndex >= children.length) {
+      throw ValidationError("blockIndex out of range");
+    }
+
+    if (opts.contentHash !== undefined) {
+      const currentNode = children[blockIndex];
+      const currentHash = createHash("md5")
+        .update(JSON.stringify(currentNode.toJSON()))
+        .digest("hex")
+        .slice(0, 8);
+
+      if (currentHash !== opts.contentHash) {
+        throw ValidationError("Stale contentHash — block changed");
+      }
+    }
+
+    let newBlock: Node;
+
+    if (opts.data !== undefined) {
+      try {
+        newBlock = Node.fromJSON(schema, opts.data);
+      } catch (err) {
+        throw ValidationError(
+          err instanceof Error ? err.message : "Invalid ProseMirror node data"
+        );
+      }
+    } else if (opts.text !== undefined) {
+      const parsed = parser.parse(opts.text);
+
+      if (parsed.childCount !== 1) {
+        throw ValidationError(
+          "text must resolve to exactly one block node; use data for multi-block replacements"
+        );
+      }
+
+      newBlock = parsed.firstChild!;
+    } else {
+      throw ValidationError("one of data or text is required");
+    }
+
+    // Compute the Fragment offset of the target block by summing previous node sizes.
+    let blockOffset = 0;
+    for (let i = 0; i < blockIndex; i++) {
+      blockOffset += children[i].nodeSize;
+    }
+
+    const before = existingDoc.content.cut(0, blockOffset);
+    const after = existingDoc.content.cut(
+      blockOffset + children[blockIndex].nodeSize
+    );
+
+    const newDoc = existingDoc.copy(
+      before.append(Fragment.from(newBlock)).append(after)
+    );
+
+    document.content = newDoc.toJSON();
+    document.text = serializer.serialize(newDoc);
+
+    DocumentHelper.syncYjsState(document, newDoc);
+
+    return document;
   }
 
   /**

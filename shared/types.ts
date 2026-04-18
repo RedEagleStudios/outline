@@ -412,6 +412,8 @@ export enum TeamPreference {
   MCP = "mcp",
   /** List of disabled embed provider titles. */
   DisabledEmbeds = "disabledEmbeds",
+  /** Whether smart typography replacements (smart quotes, dashes, etc.) are enabled for the team. */
+  SmartText = "smartText",
 }
 
 export type TeamPreferences = {
@@ -429,6 +431,7 @@ export type TeamPreferences = {
   [TeamPreference.EmailDisplay]?: EmailDisplay;
   [TeamPreference.MCP]?: boolean;
   [TeamPreference.DisabledEmbeds]?: string[];
+  [TeamPreference.SmartText]?: boolean;
 };
 
 export enum NavigationNodeType {

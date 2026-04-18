@@ -6,6 +6,7 @@ export const WebhookSubscriptionsCreateSchema = z.object({
     url: z.url(),
     secret: z.string().optional(),
     events: z.array(z.string()),
+    includeChanges: z.boolean().optional(),
   }),
 });
 
@@ -20,6 +21,7 @@ export const WebhookSubscriptionsUpdateSchema = z.object({
     url: z.url(),
     secret: z.string().optional(),
     events: z.array(z.string()),
+    includeChanges: z.boolean().optional(),
   }),
 });
 

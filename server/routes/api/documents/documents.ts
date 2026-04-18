@@ -625,6 +625,65 @@ router.post(
 );
 
 router.post(
+  "documents.data",
+  rateLimiter(RateLimiterStrategy.TwentyFivePerMinute),
+  auth({ optional: true }),
+  validate(T.DocumentsDataSchema),
+  async (ctx: APIContext<T.DocumentsDataReq>) => {
+    const { id, shareId, signedUrls } = ctx.input.body;
+    const { user } = ctx.state.auth;
+    const teamFromCtx = await getTeamFromContext(ctx, {
+      includeStateCookie: false,
+    });
+
+    let document: Document;
+
+    if (shareId) {
+      const result = await loadPublicShare({
+        id: shareId,
+        documentId: id,
+        teamId: teamFromCtx?.id,
+      });
+
+      if (!result.document) {
+        throw NotFoundError("Document could not be found for shareId");
+      }
+
+      document = result.document;
+
+      if (user) {
+        document = await Document.findByPk(document.id, {
+          userId: user.id,
+          rejectOnEmpty: true,
+        });
+      }
+    } else {
+      if (!user) {
+        throw AuthenticationError("Authentication required");
+      }
+
+      document = await documentLoader({
+        id: id!,
+        user,
+      });
+    }
+
+    if (user) {
+      authorize(user, "read", document);
+    }
+
+    const pmJson = await DocumentHelper.toJSON(document, {
+      signedUrls,
+      teamId: user?.teamId,
+    });
+
+    ctx.body = {
+      data: pmJson,
+    };
+  }
+);
+
+router.post(
   "documents.insights",
   auth(),
   validate(T.DocumentsInsightsSchema),
@@ -1291,6 +1350,7 @@ router.post(
 
 router.post(
   "documents.update",
+  rateLimiter(RateLimiterStrategy.TwentyFivePerMinute),
   auth(),
   validate(T.DocumentsUpdateSchema),
   transaction(),
@@ -2164,6 +2224,51 @@ router.post(
 
     ctx.body = {
       success: true,
+    };
+  }
+);
+
+router.post(
+  "documents.blocks.list",
+  rateLimiter(RateLimiterStrategy.TwentyFivePerMinute),
+  auth(),
+  validate(T.DocumentsBlocksListSchema),
+  async (ctx: APIContext<T.DocumentsBlocksListReq>) => {
+    const { id } = ctx.input.body;
+    const { user } = ctx.state.auth;
+
+    const document = await documentLoader({ id, user });
+    authorize(user, "read", document);
+
+    ctx.body = {
+      data: DocumentHelper.getBlocks(document),
+    };
+  }
+);
+
+router.post(
+  "documents.blocks.update",
+  rateLimiter(RateLimiterStrategy.TwentyFivePerMinute),
+  auth(),
+  validate(T.DocumentsBlocksUpdateSchema),
+  transaction(),
+  async (ctx: APIContext<T.DocumentsBlocksUpdateReq>) => {
+    const { transaction } = ctx.state;
+    const { id, blockIndex, contentHash, data, text } = ctx.input.body;
+    const { user } = ctx.state.auth;
+
+    const document = await Document.findByPk(id, {
+      userId: user.id,
+      includeState: true,
+      transaction,
+    });
+    authorize(user, "update", document);
+
+    DocumentHelper.updateBlock(document, blockIndex, { data, text, contentHash });
+    await document.save({ transaction });
+
+    ctx.body = {
+      data: await presentDocument(ctx, document),
     };
   }
 );

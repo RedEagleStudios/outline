@@ -154,6 +154,25 @@ export const DocumentsInfoSchema = BaseSchema.extend({
 
 export type DocumentsInfoReq = z.infer<typeof DocumentsInfoSchema>;
 
+/**
+ * Schema for the documents.data endpoint which returns the ProseMirror JSON
+ * of a document. Either id or shareId must be provided.
+ */
+export const DocumentsDataSchema = BaseSchema.extend({
+  body: z.object({
+    /** Id of the document */
+    id: zodIdType().optional(),
+    /** Share Id, if available */
+    shareId: zodShareIdType().optional(),
+    /** Whether to sign attachment urls, and if so for how many seconds */
+    signedUrls: z.number().optional(),
+  }),
+}).refine((req) => !(isEmpty(req.body.id) && isEmpty(req.body.shareId)), {
+  message: "one of id or shareId is required",
+});
+
+export type DocumentsDataReq = z.infer<typeof DocumentsDataSchema>;
+
 export const DocumentsInsightsSchema = BaseSchema.extend({
   body: BaseIdSchema.extend({
     /** Start of the insights window (inclusive). Defaults to 30 days ago. */
@@ -266,6 +285,9 @@ export const DocumentsUpdateSchema = BaseSchema.extend({
     /** Doc text to be updated */
     text: z.string().optional(),
 
+    /** ProseMirror JSON document to replace the document content (mutually exclusive with text) */
+    data: z.record(z.string(), z.unknown()).optional(),
+
     /** Icon displayed alongside doc title */
     icon: zodIconType().nullish(),
 
@@ -304,6 +326,23 @@ export const DocumentsUpdateSchema = BaseSchema.extend({
 
     /** Whether the editing session is complete */
     done: z.boolean().optional(),
+
+    /** When true, skips smart typography normalization (e.g. straight quotes are preserved as-is). */
+    disableSmartTypography: z.boolean().optional(),
+
+    /** Multiple find-and-replace patches to apply atomically in a single transaction */
+    patches: z
+      .array(
+        z.object({
+          /** The markdown text to find */
+          findText: z.string().max(10_000),
+          /** The replacement text */
+          text: z.string().max(50_000),
+        })
+      )
+      .min(1)
+      .max(50)
+      .optional(),
   }),
 })
   .refine(
@@ -331,6 +370,54 @@ export const DocumentsUpdateSchema = BaseSchema.extend({
     (req) => !(req.body.editMode === TextEditMode.Patch && !req.body.findText),
     {
       message: "findText is required when using patch editMode",
+    }
+  )
+  .refine(
+    (req) =>
+      !(req.body.data !== undefined && req.body.text !== undefined),
+    {
+      message: "data and text are mutually exclusive",
+    }
+  )
+  .refine(
+    (req) =>
+      !(
+        req.body.data !== undefined &&
+        (req.body.editMode === TextEditMode.Patch ||
+          req.body.findText !== undefined)
+      ),
+    {
+      message: "data cannot be used with patch editMode or findText",
+    }
+  )
+  .refine(
+    (req) =>
+      !(
+        req.body.patches !== undefined &&
+        (req.body.editMode === TextEditMode.Patch ||
+          req.body.findText !== undefined)
+      ),
+    {
+      message:
+        "patches cannot be used with patch editMode or findText (use patches exclusively)",
+    }
+  )
+  .refine(
+    (req) =>
+      !(req.body.patches !== undefined && req.body.data !== undefined),
+    {
+      message: "patches and data are mutually exclusive",
+    }
+  )
+  .refine(
+    (req) =>
+      !(
+        req.body.patches !== undefined &&
+        req.body.text !== undefined &&
+        req.body.editMode !== TextEditMode.Patch
+      ),
+    {
+      message: "patches cannot be combined with a top-level text field",
     }
   )
   .transform((req) => {
@@ -559,3 +646,46 @@ export const DocumentsSitemapSchema = BaseSchema.extend({
 });
 
 export type DocumentsSitemapReq = z.infer<typeof DocumentsSitemapSchema>;
+
+/**
+ * Schema for the documents.blocks.list endpoint which returns the top-level
+ * block nodes of a document with their positional index and content hash.
+ */
+export const DocumentsBlocksListSchema = BaseSchema.extend({
+  body: BaseIdSchema,
+});
+
+export type DocumentsBlocksListReq = z.infer<typeof DocumentsBlocksListSchema>;
+
+/**
+ * Schema for the documents.blocks.update endpoint which replaces a single
+ * top-level block node identified by its positional index. Either `data`
+ * (ProseMirror JSON) or `text` (Markdown) must be provided — not both.
+ */
+export const DocumentsBlocksUpdateSchema = BaseSchema.extend({
+  body: BaseIdSchema.extend({
+    /** Zero-based index of the top-level block to replace */
+    blockIndex: z.number().int().min(0),
+
+    /** Optional content hash for optimistic concurrency; if provided and stale the request is rejected */
+    contentHash: z.string().optional(),
+
+    /** ProseMirror JSON for the replacement block (mutually exclusive with text) */
+    data: z.record(z.string(), z.unknown()).optional(),
+
+    /** Markdown text for the replacement block (mutually exclusive with data) */
+    text: z.string().optional(),
+  }),
+}).refine(
+  (req) => req.body.data !== undefined || req.body.text !== undefined,
+  {
+    message: "one of data or text is required",
+  }
+).refine(
+  (req) => !(req.body.data !== undefined && req.body.text !== undefined),
+  {
+    message: "data and text are mutually exclusive",
+  }
+);
+
+export type DocumentsBlocksUpdateReq = z.infer<typeof DocumentsBlocksUpdateSchema>;

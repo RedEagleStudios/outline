@@ -30,6 +30,7 @@ function Preferences() {
   const user = useCurrentUser();
   const team = useCurrentTeam();
   const can = usePolicy(user.id);
+  const canTeam = usePolicy(team);
 
   const languageOptions: Option[] = React.useMemo(
     () =>
@@ -97,6 +98,15 @@ function Preferences() {
       toast.success(t("Preferences saved"));
     },
     [user, t]
+  );
+
+  const handleSmartTextChange = React.useCallback(
+    async (checked: boolean) => {
+      team.setPreference(TeamPreference.SmartText, checked);
+      await team.save();
+      toast.success(t("Settings saved"));
+    },
+    [team, t]
   );
 
   const notificationBadgeOptions: Option[] = React.useMemo(
@@ -280,6 +290,22 @@ function Preferences() {
           onChange={handleEnableSmartTextChange}
         />
       </SettingRow>
+      {canTeam.update && (
+        <SettingRow
+          name={TeamPreference.SmartText}
+          label={t("Smart typography for workspace")}
+          description={t(
+            "When disabled, smart typography replacements are turned off for all members of the workspace, overriding individual preferences."
+          )}
+        >
+          <Switch
+            id={TeamPreference.SmartText}
+            name={TeamPreference.SmartText}
+            checked={team.getPreference(TeamPreference.SmartText, true)}
+            onChange={handleSmartTextChange}
+          />
+        </SettingRow>
+      )}
       <SettingRow
         border={false}
         name={UserPreference.NotificationBadge}

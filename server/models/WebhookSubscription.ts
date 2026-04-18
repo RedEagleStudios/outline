@@ -75,6 +75,13 @@ class WebhookSubscription extends ParanoidModel<
   @Encrypted
   secret: string | null;
 
+  /** When true, document webhook payloads include a line-level diff summary. */
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+  })
+  includeChanges: boolean;
+
   // associations
 
   @BelongsTo(() => User, "createdById")

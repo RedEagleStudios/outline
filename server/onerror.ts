@@ -87,6 +87,8 @@ export default function onerror(app: Koa) {
         status: Number(err.status),
         message: String(err.message || err.name),
         data: err.errorData ?? undefined,
+        suggestions:
+          "suggestions" in err ? err.suggestions : undefined,
       });
     }
 

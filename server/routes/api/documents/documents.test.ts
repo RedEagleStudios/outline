@@ -5864,3 +5864,396 @@ describe("#documents.documents", () => {
     expect(body).toMatchSnapshot();
   });
 });
+
+describe("#documents.data", () => {
+  it("should return ProseMirror JSON for authenticated user", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+    });
+    const res = await server.post("/api/documents.data", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+      },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(body.data.type).toEqual("doc");
+    expect(Array.isArray(body.data.content)).toBe(true);
+  });
+
+  it("should return 401 for unauthenticated request without shareId", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+    });
+    const res = await server.post("/api/documents.data", {
+      body: {
+        id: document.id,
+      },
+    });
+    expect(res.status).toEqual(401);
+  });
+
+  it("should return 403 for document in another team", async () => {
+    const user = await buildUser();
+    const otherUser = await buildUser();
+    const document = await buildDocument({
+      userId: otherUser.id,
+      teamId: otherUser.teamId,
+    });
+    const res = await server.post("/api/documents.data", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+      },
+    });
+    expect(res.status).toEqual(403);
+  });
+
+  it("should return ProseMirror JSON via shareId without token", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({ userId: user.id });
+    const share = await buildShare({
+      documentId: document.id,
+      teamId: document.teamId,
+      userId: user.id,
+    });
+    const res = await server.post("/api/documents.data", {
+      body: {
+        shareId: share.id,
+      },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(body.data.type).toEqual("doc");
+    expect(Array.isArray(body.data.content)).toBe(true);
+  });
+});
+
+describe("#documents.update with data (ProseMirror JSON)", () => {
+  it("should update document content via ProseMirror JSON round-trip", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+    });
+
+    // Fetch the current PM JSON
+    const dataRes = await server.post("/api/documents.data", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+      },
+    });
+    expect(dataRes.status).toEqual(200);
+    const { data: originalPmJson } = await dataRes.json();
+
+    // Modify the PM JSON: replace the text of the first paragraph
+    const modifiedPmJson = {
+      ...originalPmJson,
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Updated via PM JSON" }],
+        },
+      ],
+    };
+
+    // Send modified PM JSON to documents.update
+    const updateRes = await server.post("/api/documents.update", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+        data: modifiedPmJson,
+      },
+    });
+    expect(updateRes.status).toEqual(200);
+
+    // Verify the document was updated
+    const fetchRes = await server.post("/api/documents.data", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+      },
+    });
+    expect(fetchRes.status).toEqual(200);
+    const { data: fetchedPmJson } = await fetchRes.json();
+    expect(fetchedPmJson.type).toEqual("doc");
+    expect(fetchedPmJson.content[0].content[0].text).toEqual(
+      "Updated via PM JSON"
+    );
+  });
+
+  it("should reject when both data and text are provided", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+    });
+
+    const res = await server.post("/api/documents.update", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+        text: "Some markdown text",
+        data: { type: "doc", content: [] },
+      },
+    });
+    expect(res.status).toEqual(400);
+  });
+
+  it("should return 400 for invalid ProseMirror JSON", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+    });
+
+    const res = await server.post("/api/documents.update", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+        data: { type: "totally-not-a-node" },
+      },
+    });
+    expect(res.status).toEqual(400);
+  });
+});
+
+describe("#documents.blocks.list", () => {
+  it("should return blocks with correct structure for a multi-paragraph document", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+      text: "First paragraph\n\nSecond paragraph\n\nThird paragraph",
+    });
+    const res = await server.post("/api/documents.blocks.list", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+      },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(body.data.length).toBeGreaterThanOrEqual(3);
+
+    const first = body.data[0];
+    expect(typeof first.index).toBe("number");
+    expect(first.index).toBe(0);
+    expect(typeof first.type).toBe("string");
+    expect(typeof first.textContent).toBe("string");
+    expect(typeof first.contentHash).toBe("string");
+    expect(first.contentHash).toHaveLength(8);
+    expect(typeof first.attrs).toBe("object");
+    expect(typeof first.data).toBe("object");
+
+    // Indices are sequential
+    body.data.forEach((block: { index: number }, i: number) => {
+      expect(block.index).toBe(i);
+    });
+  });
+
+  it("should return 403 for a document the user cannot read", async () => {
+    const user = await buildUser();
+    const otherUser = await buildUser();
+    const document = await buildDocument({
+      userId: otherUser.id,
+      teamId: otherUser.teamId,
+    });
+    const res = await server.post("/api/documents.blocks.list", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+      },
+    });
+    expect(res.status).toEqual(403);
+  });
+});
+
+describe("#documents.blocks.update", () => {
+  it("should update a block by index using data and leave other blocks unchanged", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+      text: "Block one\n\nBlock two\n\nBlock three",
+    });
+
+    // List blocks to get current state
+    const listRes = await server.post("/api/documents.blocks.list", {
+      body: { token: user.getJwtToken(), id: document.id },
+    });
+    expect(listRes.status).toEqual(200);
+    const { data: blocks } = await listRes.json();
+    expect(blocks.length).toBeGreaterThanOrEqual(3);
+
+    // Snapshot the blocks we won't touch
+    const block0Before = JSON.stringify(blocks[0].data);
+    const block2Before = JSON.stringify(blocks[2].data);
+
+    // Replace block at index 1 with new data
+    const newBlockData = {
+      type: "paragraph",
+      content: [{ type: "text", text: "Replaced block two" }],
+    };
+    const updateRes = await server.post("/api/documents.blocks.update", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+        blockIndex: 1,
+        data: newBlockData,
+      },
+    });
+    expect(updateRes.status).toEqual(200);
+
+    // Fetch the updated block list
+    const listRes2 = await server.post("/api/documents.blocks.list", {
+      body: { token: user.getJwtToken(), id: document.id },
+    });
+    const { data: blocksAfter } = await listRes2.json();
+
+    // The updated block should have new content
+    expect(blocksAfter[1].textContent).toContain("Replaced block two");
+
+    // Adjacent blocks should be unchanged
+    expect(JSON.stringify(blocksAfter[0].data)).toEqual(block0Before);
+    expect(JSON.stringify(blocksAfter[2].data)).toEqual(block2Before);
+  });
+
+  it("should update a block by index using text", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+      text: "Original text",
+    });
+
+    const updateRes = await server.post("/api/documents.blocks.update", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+        blockIndex: 0,
+        text: "Replaced via text",
+      },
+    });
+    expect(updateRes.status).toEqual(200);
+
+    const listRes = await server.post("/api/documents.blocks.list", {
+      body: { token: user.getJwtToken(), id: document.id },
+    });
+    const { data: blocks } = await listRes.json();
+    expect(blocks[0].textContent).toContain("Replaced via text");
+  });
+
+  it("should reject a stale contentHash", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+      text: "Some content",
+    });
+
+    const res = await server.post("/api/documents.blocks.update", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+        blockIndex: 0,
+        contentHash: "stale000",
+        text: "New content",
+      },
+    });
+    expect(res.status).toEqual(400);
+    const body = await res.json();
+    expect(body.message).toContain("Stale contentHash");
+  });
+
+  it("should accept a correct contentHash", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+      text: "Some content",
+    });
+
+    // Get the real hash
+    const listRes = await server.post("/api/documents.blocks.list", {
+      body: { token: user.getJwtToken(), id: document.id },
+    });
+    const { data: blocks } = await listRes.json();
+    const correctHash = blocks[0].contentHash;
+
+    const res = await server.post("/api/documents.blocks.update", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+        blockIndex: 0,
+        contentHash: correctHash,
+        text: "Updated successfully",
+      },
+    });
+    expect(res.status).toEqual(200);
+  });
+
+  it("should reject an out-of-range blockIndex", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+      text: "One paragraph",
+    });
+
+    const res = await server.post("/api/documents.blocks.update", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+        blockIndex: 999,
+        text: "Should fail",
+      },
+    });
+    expect(res.status).toEqual(400);
+    const body = await res.json();
+    expect(body.message).toContain("blockIndex out of range");
+  });
+
+  it("should return 400 when neither data nor text is provided", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+    });
+
+    const res = await server.post("/api/documents.blocks.update", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+        blockIndex: 0,
+      },
+    });
+    expect(res.status).toEqual(400);
+  });
+
+  it("should return 400 when both data and text are provided", async () => {
+    const user = await buildUser();
+    const document = await buildDocument({
+      userId: user.id,
+      teamId: user.teamId,
+    });
+
+    const res = await server.post("/api/documents.blocks.update", {
+      body: {
+        token: user.getJwtToken(),
+        id: document.id,
+        blockIndex: 0,
+        data: { type: "paragraph", content: [] },
+        text: "also this",
+      },
+    });
+    expect(res.status).toEqual(400);
+  });
+});

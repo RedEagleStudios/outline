@@ -5,6 +5,7 @@ import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import isMatch from "lodash/isMatch";
 import { Node, Fragment } from "prosemirror-model";
+import { ValidationError } from "@server/errors";
 import { renderToString } from "react-dom/server";
 import styled, { ServerStyleSheet, ThemeProvider } from "styled-components";
 import { prosemirrorToYDoc } from "y-prosemirror";
@@ -15,7 +16,7 @@ import type { ExtendedChange } from "@shared/editor/lib/ChangesetHelper";
 import EditorContainer from "@shared/editor/components/Styles";
 import GlobalStyles from "@shared/styles/globals";
 import light from "@shared/styles/theme";
-import type { ProsemirrorData, UnfurlResponse } from "@shared/types";
+import type { JSONValue, ProsemirrorData, UnfurlResponse } from "@shared/types";
 import { AttachmentPreset, MentionType } from "@shared/types";
 import {
   attachmentRedirectRegex,
@@ -944,5 +945,448 @@ export class ProsemirrorHelper extends SharedProsemirrorHelper {
     };
 
     return doc.copy(transformFragment(doc.content));
+  }
+
+  /**
+   * Locates the Nth top-level `table` node in the document JSON.
+   *
+   * @param doc The document JSON to search.
+   * @param tableIndex Zero-based index among top-level table nodes.
+   * @returns The matching table ProsemirrorData node.
+   * @throws ValidationError when no table exists at the given index.
+   */
+  private static findTable(
+    doc: ProsemirrorData,
+    tableIndex: number
+  ): ProsemirrorData {
+    const tables: ProsemirrorData[] = [];
+    (doc.content ?? []).forEach((child) => {
+      if (child.type === "table") {
+        tables.push(child);
+      }
+    });
+    const table = tables[tableIndex];
+    if (!table) {
+      throw ValidationError(`No table at index ${tableIndex}`);
+    }
+    return table;
+  }
+
+  /**
+   * Builds a grid map of a table, expanding colspan/rowspan so that every
+   * logical (row, col) coordinate resolves to the cell node that occupies it
+   * plus the row/cell indices within the JSON. Rows with zero cells are
+   * skipped (treated as malformed input).
+   *
+   * @param table The table ProsemirrorData node.
+   * @returns A 2D array of slot descriptors indexed by [row][col]; `null` for
+   * malformed rows.
+   */
+  private static buildTableMap(table: ProsemirrorData): Array<
+    Array<{
+      cell: ProsemirrorData;
+      /** Index of the row within the table JSON content. */
+      rowIndex: number;
+      /** Index of the cell within its row's JSON content. */
+      cellIndex: number;
+      /** True when this slot is the top-left origin of the cell. */
+      isOrigin: boolean;
+    } | null>
+  > {
+    const rows = table.content ?? [];
+    const grid: Array<
+      Array<{
+        cell: ProsemirrorData;
+        rowIndex: number;
+        cellIndex: number;
+        isOrigin: boolean;
+      } | null>
+    > = rows.map(() => []);
+
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      const cells = row.content ?? [];
+      let col = 0;
+      for (let c = 0; c < cells.length; c++) {
+        // skip already-occupied columns (from previous rowspans)
+        while (grid[r][col]) {
+          col++;
+        }
+        const cell = cells[c];
+        const colspan = Number(cell.attrs?.colspan ?? 1);
+        const rowspan = Number(cell.attrs?.rowspan ?? 1);
+        for (let dr = 0; dr < rowspan; dr++) {
+          for (let dc = 0; dc < colspan; dc++) {
+            const targetRow = r + dr;
+            const targetCol = col + dc;
+            if (!grid[targetRow]) {
+              grid[targetRow] = [];
+            }
+            grid[targetRow][targetCol] = {
+              cell,
+              rowIndex: r,
+              cellIndex: c,
+              isOrigin: dr === 0 && dc === 0,
+            };
+          }
+        }
+        col += colspan;
+      }
+    }
+    return grid;
+  }
+
+  /**
+   * Sets (or clears) the background color mark on a single table cell. Rows
+   * and columns are addressed by their logical grid coordinates, i.e. taking
+   * existing colspan/rowspan into account.
+   *
+   * @param doc The document JSON to update.
+   * @param tableIndex Zero-based index of the target table among top-level nodes.
+   * @param row Zero-based logical row index.
+   * @param col Zero-based logical column index.
+   * @param color Hex color to set, or `null` to clear the background.
+   * @returns A new ProsemirrorData JSON object with the change applied.
+   * @throws ValidationError when the target cell does not exist.
+   */
+  static setCellBackground(
+    doc: ProsemirrorData,
+    tableIndex: number,
+    row: number,
+    col: number,
+    color: string | null
+  ): ProsemirrorData {
+    const cloned = JSON.parse(JSON.stringify(doc)) as ProsemirrorData;
+    const table = ProsemirrorHelper.findTable(cloned, tableIndex);
+    const grid = ProsemirrorHelper.buildTableMap(table);
+    const slot = grid[row]?.[col];
+    if (!slot) {
+      throw ValidationError(
+        `No cell at row ${row}, column ${col} in table ${tableIndex}`
+      );
+    }
+    const cell = slot.cell;
+    const existing = ((cell.attrs?.marks as
+      | Array<{ type: string; attrs?: Record<string, unknown> }>
+      | undefined) ?? []).filter((mark) => mark.type !== "background");
+
+    const nextMarks =
+      color === null
+        ? existing
+        : [...existing, { type: "background", attrs: { color } }];
+
+    cell.attrs = {
+      ...(cell.attrs ?? {}),
+      marks: (nextMarks.length > 0 ? nextMarks : undefined) as JSONValue,
+    };
+    return cloned;
+  }
+
+  /**
+   * Sets the width of a column in a table by updating the `colwidth` attr of
+   * every cell whose range includes the target column. For cells that span
+   * multiple columns, only the slot matching `col` is resized.
+   *
+   * @param doc The document JSON to update.
+   * @param tableIndex Zero-based index of the target table among top-level nodes.
+   * @param col Zero-based logical column index to resize.
+   * @param width New width in pixels. Must be positive.
+   * @returns A new ProsemirrorData JSON object with the change applied.
+   * @throws ValidationError when the column does not exist in the table.
+   */
+  static setColumnWidth(
+    doc: ProsemirrorData,
+    tableIndex: number,
+    col: number,
+    width: number
+  ): ProsemirrorData {
+    const cloned = JSON.parse(JSON.stringify(doc)) as ProsemirrorData;
+    const table = ProsemirrorHelper.findTable(cloned, tableIndex);
+    const grid = ProsemirrorHelper.buildTableMap(table);
+
+    const maxWidth = grid.reduce((max, r) => Math.max(max, r.length), 0);
+    if (col >= maxWidth) {
+      throw ValidationError(
+        `No column ${col} in table ${tableIndex} (width ${maxWidth})`
+      );
+    }
+
+    const visited = new Set<ProsemirrorData>();
+    let touched = false;
+    for (let r = 0; r < grid.length; r++) {
+      const slot = grid[r]?.[col];
+      if (!slot || visited.has(slot.cell)) {
+        continue;
+      }
+      visited.add(slot.cell);
+      touched = true;
+      const cell = slot.cell;
+      const colspan = Number(cell.attrs?.colspan ?? 1);
+
+      // Figure out the cell's leftmost column, and the offset within the
+      // cell's colwidth array that corresponds to `col`.
+      let originCol = col;
+      while (originCol > 0 && grid[r][originCol - 1]?.cell === cell) {
+        originCol--;
+      }
+      const offset = col - originCol;
+
+      const current = Array.isArray(cell.attrs?.colwidth)
+        ? (cell.attrs!.colwidth as number[]).slice()
+        : new Array<number>(colspan).fill(0);
+      while (current.length < colspan) {
+        current.push(0);
+      }
+      current[offset] = width;
+      cell.attrs = { ...(cell.attrs ?? {}), colwidth: current };
+    }
+
+    if (!touched) {
+      throw ValidationError(
+        `No column ${col} in table ${tableIndex} (width ${maxWidth})`
+      );
+    }
+
+    return cloned;
+  }
+
+  /**
+   * Merges a rectangular range of table cells into a single cell. The surviving
+   * cell takes the top-left position and absorbs the colspan/rowspan of the
+   * rectangle. Content from the absorbed cells is appended to the survivor's
+   * content. Only rectangles whose edges align with existing cell boundaries
+   * are accepted — overlapping merges throw ValidationError.
+   *
+   * @param doc The document JSON to update.
+   * @param tableIndex Zero-based index of the target table among top-level nodes.
+   * @param fromRow Top row of the rectangle (inclusive).
+   * @param fromCol Left column of the rectangle (inclusive).
+   * @param toRow Bottom row of the rectangle (inclusive).
+   * @param toCol Right column of the rectangle (inclusive).
+   * @returns A new ProsemirrorData JSON object with the change applied.
+   * @throws ValidationError when the rectangle is invalid or crosses existing
+   * merged cells.
+   */
+  static mergeCells(
+    doc: ProsemirrorData,
+    tableIndex: number,
+    fromRow: number,
+    fromCol: number,
+    toRow: number,
+    toCol: number
+  ): ProsemirrorData {
+    if (fromRow > toRow || fromCol > toCol) {
+      throw ValidationError(
+        "Invalid merge rectangle: from-coordinates must not exceed to-coordinates"
+      );
+    }
+    if (fromRow === toRow && fromCol === toCol) {
+      throw ValidationError("Merge rectangle must cover more than one cell");
+    }
+
+    const cloned = JSON.parse(JSON.stringify(doc)) as ProsemirrorData;
+    const table = ProsemirrorHelper.findTable(cloned, tableIndex);
+    const grid = ProsemirrorHelper.buildTableMap(table);
+
+    const height = grid.length;
+    const width = grid.reduce((max, r) => Math.max(max, r.length), 0);
+    if (toRow >= height || toCol >= width) {
+      throw ValidationError(
+        `Merge rectangle out of range for table ${tableIndex}`
+      );
+    }
+
+    // Every cell that touches the rectangle must be fully contained in it.
+    const touchedCells = new Set<ProsemirrorData>();
+    for (let r = fromRow; r <= toRow; r++) {
+      for (let c = fromCol; c <= toCol; c++) {
+        const slot = grid[r]?.[c];
+        if (!slot) {
+          throw ValidationError(
+            `Missing cell at row ${r}, column ${c} in merge range`
+          );
+        }
+        touchedCells.add(slot.cell);
+      }
+    }
+    for (const cell of touchedCells) {
+      for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < (grid[r]?.length ?? 0); c++) {
+          if (grid[r][c]?.cell === cell) {
+            if (r < fromRow || r > toRow || c < fromCol || c > toCol) {
+              throw ValidationError(
+                "Merge rectangle must align with existing cell boundaries"
+              );
+            }
+          }
+        }
+      }
+    }
+
+    const survivor = grid[fromRow][fromCol]!.cell;
+
+    // Gather absorbed content (in reading order) before mutating the rows.
+    const absorbed: ProsemirrorData[] = [];
+    const absorbedCells = new Set<ProsemirrorData>();
+    for (let r = fromRow; r <= toRow; r++) {
+      for (let c = fromCol; c <= toCol; c++) {
+        const slot = grid[r][c]!;
+        if (!slot.isOrigin || slot.cell === survivor) {
+          continue;
+        }
+        if (absorbedCells.has(slot.cell)) {
+          continue;
+        }
+        absorbedCells.add(slot.cell);
+        for (const child of slot.cell.content ?? []) {
+          if (ProsemirrorHelper.isEmptyBlock(child)) {
+            continue;
+          }
+          absorbed.push(child);
+        }
+      }
+    }
+
+    survivor.attrs = {
+      ...(survivor.attrs ?? {}),
+      colspan: toCol - fromCol + 1,
+      rowspan: toRow - fromRow + 1,
+    };
+    survivor.content = [...(survivor.content ?? []), ...absorbed];
+
+    // Remove absorbed cells from their rows. Walk rows bottom-up so that
+    // splice indices stay valid.
+    const rows = table.content ?? [];
+    for (let r = rows.length - 1; r >= 0; r--) {
+      const cells = rows[r].content ?? [];
+      rows[r].content = cells.filter((cell) => !absorbedCells.has(cell));
+    }
+
+    return cloned;
+  }
+
+  /**
+   * Splits a merged cell back into 1x1 cells. The original cell is reset to
+   * colspan/rowspan 1 and empty placeholder cells are inserted to fill the
+   * now-vacant slots.
+   *
+   * @param doc The document JSON to update.
+   * @param tableIndex Zero-based index of the target table among top-level nodes.
+   * @param row Row of the cell to split.
+   * @param col Column of the cell to split.
+   * @returns A new ProsemirrorData JSON object with the change applied.
+   * @throws ValidationError when the target cell is not merged or does not exist.
+   */
+  static splitCell(
+    doc: ProsemirrorData,
+    tableIndex: number,
+    row: number,
+    col: number
+  ): ProsemirrorData {
+    const cloned = JSON.parse(JSON.stringify(doc)) as ProsemirrorData;
+    const table = ProsemirrorHelper.findTable(cloned, tableIndex);
+    const grid = ProsemirrorHelper.buildTableMap(table);
+
+    const slot = grid[row]?.[col];
+    if (!slot) {
+      throw ValidationError(
+        `No cell at row ${row}, column ${col} in table ${tableIndex}`
+      );
+    }
+    if (!slot.isOrigin) {
+      throw ValidationError(
+        "splitCell target must be the origin of the merged cell"
+      );
+    }
+
+    const cell = slot.cell;
+    const colspan = Number(cell.attrs?.colspan ?? 1);
+    const rowspan = Number(cell.attrs?.rowspan ?? 1);
+    if (colspan === 1 && rowspan === 1) {
+      throw ValidationError("Target cell is not merged");
+    }
+
+    const cellType = cell.type;
+    const makeEmpty = (): ProsemirrorData => ({
+      type: cellType,
+      attrs: { colspan: 1, rowspan: 1, colwidth: null, alignment: null },
+      content: [{ type: "paragraph" }],
+    });
+
+    const rows = table.content ?? [];
+
+    // Reset survivor attrs.
+    cell.attrs = {
+      ...(cell.attrs ?? {}),
+      colspan: 1,
+      rowspan: 1,
+    };
+
+    // Fill remaining columns of the survivor's row.
+    const survivorRow = rows[slot.rowIndex];
+    const insertAt = slot.cellIndex + 1;
+    const newSurvivorCells: ProsemirrorData[] = [];
+    for (let i = 0; i < colspan - 1; i++) {
+      newSurvivorCells.push(makeEmpty());
+    }
+    if (newSurvivorCells.length > 0) {
+      const existing = survivorRow.content ?? [];
+      survivorRow.content = [
+        ...existing.slice(0, insertAt),
+        ...newSurvivorCells,
+        ...existing.slice(insertAt),
+      ];
+    }
+
+    // Fill spanned rows below.
+    for (let dr = 1; dr < rowspan; dr++) {
+      const targetRow = rows[row + dr];
+      if (!targetRow) {
+        continue;
+      }
+      // Determine where (in cell-index terms) to insert: count how many cells
+      // in that row occupy columns left of `col`. We re-derive from the grid.
+      let cellsBeforeCol = 0;
+      const seen = new Set<ProsemirrorData>();
+      for (let c = 0; c < col; c++) {
+        const s = grid[row + dr]?.[c];
+        if (s && !seen.has(s.cell)) {
+          seen.add(s.cell);
+          // Only count cells whose origin row is this row.
+          if (s.rowIndex === row + dr) {
+            cellsBeforeCol++;
+          }
+        }
+      }
+      const fillers: ProsemirrorData[] = [];
+      for (let i = 0; i < colspan; i++) {
+        fillers.push(makeEmpty());
+      }
+      const existing = targetRow.content ?? [];
+      targetRow.content = [
+        ...existing.slice(0, cellsBeforeCol),
+        ...fillers,
+        ...existing.slice(cellsBeforeCol),
+      ];
+    }
+
+    return cloned;
+  }
+
+  /**
+   * Returns true when a ProsemirrorData node represents an empty paragraph or
+   * empty text block — useful for skipping filler content when merging cells.
+   */
+  private static isEmptyBlock(node: ProsemirrorData): boolean {
+    if (node.type !== "paragraph") {
+      return false;
+    }
+    const content = node.content ?? [];
+    if (content.length === 0) {
+      return true;
+    }
+    return content.every(
+      (child) => child.type === "text" && (child.text ?? "").length === 0
+    );
   }
 }

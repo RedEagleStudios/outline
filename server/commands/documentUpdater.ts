@@ -15,6 +15,8 @@ type Props = {
   color?: string | null;
   /** The new text content */
   text?: string;
+  /** ProseMirror JSON document to replace content (mutually exclusive with text) */
+  data?: Record<string, unknown>;
   /** Whether the editing session is complete */
   done?: boolean;
   /** The version of the client editor that was used */
@@ -29,6 +31,14 @@ type Props = {
   editMode?: TextEditMode;
   /** The markdown text to find when using "patch" edit mode */
   findText?: string;
+  /** Multiple find-and-replace patches to apply atomically (mutually exclusive with editMode patch + findText and with data) */
+  patches?: Array<{ findText: string; text: string }>;
+  /**
+   * When true, smart (curly) quotes are NOT normalized to straight quotes during
+   * the patch lookup. Pass this when the caller's `findText` contains the original
+   * curly-quote characters and must match them verbatim.
+   */
+  disableSmartTypography?: boolean;
   /** Whether the document should be published to the collection */
   publish?: boolean;
   /** The ID of the collection to publish the document to */
@@ -50,12 +60,15 @@ export default async function documentUpdater(
     icon,
     color,
     text,
+    data,
+    patches,
     editorVersion,
     templateId,
     fullWidth,
     insightsEnabled,
     editMode,
     findText,
+    disableSmartTypography,
     publish,
     collectionId,
     done,
@@ -86,6 +99,20 @@ export default async function documentUpdater(
   if (insightsEnabled !== undefined) {
     document.insightsEnabled = insightsEnabled;
   }
+  if (patches !== undefined && (data !== undefined || text !== undefined)) {
+    throw new Error(
+      "patches are mutually exclusive with data and text fields"
+    );
+  }
+  if (patches !== undefined) {
+    document = DocumentHelper.applyMultiPatch(document, patches);
+  }
+  if (data !== undefined && text !== undefined) {
+    throw new Error("data and text are mutually exclusive");
+  }
+  if (data !== undefined) {
+    document = DocumentHelper.applyProsemirrorDataToDocument(document, data);
+  }
   if (text !== undefined) {
     document = DocumentHelper.applyMarkdownToDocument(
       document,
@@ -93,7 +120,8 @@ export default async function documentUpdater(
         base64Only: true,
       }),
       editMode,
-      findText
+      findText,
+      disableSmartTypography
     );
   }
 

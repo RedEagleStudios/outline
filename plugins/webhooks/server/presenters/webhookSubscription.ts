@@ -10,6 +10,7 @@ export default function presentWebhookSubscription(
     secret: webhook.secret,
     events: webhook.events,
     enabled: webhook.enabled,
+    includeChanges: webhook.includeChanges,
     createdAt: webhook.createdAt,
     updatedAt: webhook.updatedAt,
   };

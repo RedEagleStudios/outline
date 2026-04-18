@@ -1,11 +1,12 @@
 import fetchMock from "jest-fetch-mock";
-import { WebhookDelivery } from "@server/models";
+import { Document, Revision, WebhookDelivery } from "@server/models";
 import {
+  buildDocument,
   buildUser,
   buildWebhookDelivery,
   buildWebhookSubscription,
 } from "@server/test/factories";
-import type { UserEvent } from "@server/types";
+import type { DocumentEvent, UserEvent } from "@server/types";
 import DeliverWebhookTask from "./DeliverWebhookTask";
 
 beforeEach(async () => {
@@ -224,5 +225,154 @@ describe("DeliverWebhookTask", () => {
     expect(delivery.status).toBe("failed");
     expect(delivery.statusCode).toBe(500);
     expect(delivery.responseBody).toEqual('{"message":"Failure"}');
+  });
+
+  describe("document changes diff", () => {
+    test("includes changes in payload when includeChanges is true and previous revision exists", async () => {
+      fetchMock.mockResponse("SUCCESS", { status: 200 });
+
+      const subscription = await buildWebhookSubscription({
+        url: "http://example.com",
+        events: ["documents.update"],
+        includeChanges: true,
+      });
+
+      const document = await buildDocument({ teamId: subscription.teamId });
+
+      // Create the "previous" revision with known text
+      await Revision.create({
+        documentId: document.id,
+        userId: document.createdById,
+        title: document.title,
+        text: "old line one\nold line two\n",
+        createdAt: new Date(Date.now() - 2000),
+      });
+
+      // Update document text to simulate a new version
+      await Document.update(
+        { text: "old line one\nnew line three\n" },
+        { where: { id: document.id } }
+      );
+      await document.reload();
+
+      // Create a second (latest) revision so that offset:1 returns the first one
+      await Revision.create({
+        documentId: document.id,
+        userId: document.createdById,
+        title: document.title,
+        text: document.text,
+        createdAt: new Date(Date.now() - 1000),
+      });
+
+      const task = new DeliverWebhookTask();
+      const event: DocumentEvent = {
+        name: "documents.update",
+        documentId: document.id,
+        collectionId: document.collectionId!,
+        teamId: subscription.teamId,
+        actorId: document.createdById,
+        createdAt: new Date().toISOString(),
+        ip,
+      };
+
+      await task.perform({ subscriptionId: subscription.id, event });
+
+      const parsedBody = JSON.parse(
+        fetchMock.mock.calls[0]![1]!.body!.toString()
+      );
+
+      expect(parsedBody.payload.changes).toBeDefined();
+      expect(parsedBody.payload.changes.added).toContain("new line three");
+      expect(parsedBody.payload.changes.removed).toContain("old line two");
+      expect(parsedBody.payload.changes.modified).toBeUndefined();
+    });
+
+    test("omits changes from payload when includeChanges is false", async () => {
+      fetchMock.mockResponse("SUCCESS", { status: 200 });
+
+      const subscription = await buildWebhookSubscription({
+        url: "http://example.com",
+        events: ["documents.update"],
+        includeChanges: false,
+      });
+
+      const document = await buildDocument({ teamId: subscription.teamId });
+
+      await Revision.create({
+        documentId: document.id,
+        userId: document.createdById,
+        title: document.title,
+        text: "some old text\n",
+        createdAt: new Date(Date.now() - 2000),
+      });
+
+      // Second revision so offset:1 finds the first one
+      await Revision.create({
+        documentId: document.id,
+        userId: document.createdById,
+        title: document.title,
+        text: "some new text\n",
+        createdAt: new Date(Date.now() - 1000),
+      });
+
+      const task = new DeliverWebhookTask();
+      const event: DocumentEvent = {
+        name: "documents.update",
+        documentId: document.id,
+        collectionId: document.collectionId!,
+        teamId: subscription.teamId,
+        actorId: document.createdById,
+        createdAt: new Date().toISOString(),
+        ip,
+      };
+
+      await task.perform({ subscriptionId: subscription.id, event });
+
+      const parsedBody = JSON.parse(
+        fetchMock.mock.calls[0]![1]!.body!.toString()
+      );
+
+      expect(parsedBody.payload.changes).toBeUndefined();
+    });
+
+    test("omits changes when no previous revision exists even if includeChanges is true", async () => {
+      fetchMock.mockResponse("SUCCESS", { status: 200 });
+
+      const subscription = await buildWebhookSubscription({
+        url: "http://example.com",
+        events: ["documents.update"],
+        includeChanges: true,
+      });
+
+      const document = await buildDocument({ teamId: subscription.teamId });
+
+      // Only one revision — offset:1 will return null
+      await Revision.create({
+        documentId: document.id,
+        userId: document.createdById,
+        title: document.title,
+        text: document.text,
+        createdAt: new Date(),
+      });
+
+      const task = new DeliverWebhookTask();
+      const event: DocumentEvent = {
+        name: "documents.update",
+        documentId: document.id,
+        collectionId: document.collectionId!,
+        teamId: subscription.teamId,
+        actorId: document.createdById,
+        createdAt: new Date().toISOString(),
+        ip,
+      };
+
+      await task.perform({ subscriptionId: subscription.id, event });
+
+      const parsedBody = JSON.parse(
+        fetchMock.mock.calls[0]![1]!.body!.toString()
+      );
+
+      expect(parsedBody.payload.changes).toBeUndefined();
+    });
   });
 });

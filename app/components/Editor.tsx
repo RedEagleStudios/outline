@@ -8,13 +8,14 @@ import { mergeRefs } from "react-merge-refs";
 import type { Optional } from "utility-types";
 import insertFiles from "@shared/editor/commands/insertFiles";
 import EditorContainer from "@shared/editor/components/Styles";
-import { AttachmentPreset } from "@shared/types";
+import { AttachmentPreset, TeamPreference, UserPreference } from "@shared/types";
 import { ProsemirrorHelper } from "@shared/utils/ProsemirrorHelper";
 import { getDataTransferFiles } from "@shared/utils/files";
 import { AttachmentValidation } from "@shared/validations";
 import ClickablePadding from "~/components/ClickablePadding";
 import ErrorBoundary from "~/components/ErrorBoundary";
 import type { Props as EditorProps, Editor as SharedEditor } from "~/editor";
+import useCurrentTeam from "~/hooks/useCurrentTeam";
 import useCurrentUser from "~/hooks/useCurrentUser";
 import useDictionary from "~/hooks/useDictionary";
 import useEditorClickHandlers from "~/hooks/useEditorClickHandlers";
@@ -55,7 +56,15 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
   const dictionary = useDictionary();
   const embeds = useEmbeds(!shareId);
   const localRef = React.useRef<SharedEditor>();
-  const preferences = useCurrentUser({ rejectOnEmpty: false })?.preferences;
+  const userPreferences = useCurrentUser({ rejectOnEmpty: false })?.preferences;
+  const team = useCurrentTeam({ rejectOnEmpty: false });
+  const teamSmartText = team?.getPreference(TeamPreference.SmartText, true);
+  const preferences = React.useMemo(() => {
+    if (teamSmartText === false && userPreferences) {
+      return { ...userPreferences, [UserPreference.EnableSmartText]: false };
+    }
+    return userPreferences;
+  }, [userPreferences, teamSmartText]);
   const previousCommentIds = React.useRef<string[]>();
 
   // Upload progress tracking for delayed toast

@@ -14,6 +14,7 @@ data/*
 *.pem
 *.key
 *.cert
+.omc/
 
 # Yarn Berry
 .yarn/*
@@ -22,3 +23,5 @@ data/*
 !.yarn/releases
 .yarn/releases
 !.yarn/sdks
+.env.development.local
+.claude/

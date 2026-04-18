@@ -1,4 +1,4 @@
-import httpErrors from "http-errors";
+import httpErrors, { type HttpError } from "http-errors";
 
 export function InternalError(message = "Internal error") {
   return httpErrors(500, message, {
@@ -130,6 +130,43 @@ export function ValidationError(message = "Validation failed") {
     id: "validation_error",
     isReportable: false,
   });
+}
+
+/** A suggestion returned when findText is not found verbatim in the document. */
+export interface FindTextSuggestion {
+  /** Byte offset of the candidate window in the normalized markdown string. */
+  offset: number;
+  /** The candidate text extracted from the document. */
+  text: string;
+  /** Ukkonen edit distance between findText and this candidate. */
+  distance: number;
+}
+
+/** An HTTP error that carries a `suggestions` field of near-match candidates. */
+export type FindTextNotFoundHttpError = HttpError & {
+  suggestions: FindTextSuggestion[];
+};
+
+/**
+ * Thrown when the patch `findText` is not found in the document. Includes
+ * fuzzy suggestions when any near-matches exist within the edit-distance
+ * threshold.
+ *
+ * @param suggestions up to 3 nearest-match candidates, sorted by distance.
+ * @returns An HTTP 400 error with a `suggestions` property.
+ */
+export function FindTextNotFoundError(
+  suggestions: FindTextSuggestion[]
+): FindTextNotFoundHttpError {
+  return httpErrors(
+    400,
+    "The specified text was not found in the document",
+    {
+      id: "validation_error",
+      isReportable: false,
+      suggestions,
+    }
+  ) as FindTextNotFoundHttpError;
 }
 
 export function IncorrectEditionError(
