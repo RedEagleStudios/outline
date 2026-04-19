@@ -198,7 +198,7 @@ function Preferences() {
           value={user.language}
           onChange={handleLanguageChange}
           label={t("Language")}
-          hideLabel
+          labelHidden
         />
       </SettingRow>
       <SettingRow
@@ -211,7 +211,7 @@ function Preferences() {
           value={ui.theme}
           onChange={handleThemeChange}
           label={t("Appearance")}
-          hideLabel
+          labelHidden
         />
       </SettingRow>
       <SettingRow
@@ -319,7 +319,7 @@ function Preferences() {
           value={user.getPreference(UserPreference.NotificationBadge)}
           onChange={handleNotificationBadgeChange}
           label={t("Notification badge")}
-          hideLabel
+          labelHidden
         />
       </SettingRow>
 

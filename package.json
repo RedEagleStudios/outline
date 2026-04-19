@@ -88,6 +88,7 @@
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-context-menu": "^2.2.16",
     "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-direction": "^1.1.1",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-one-time-password-field": "^0.1.8",
     "@radix-ui/react-popover": "^1.1.15",
@@ -386,6 +387,7 @@
     "prismjs": "1.30.0",
     "cheerio": "1.0.0-rc.12",
     "zod": "^4.2.1",
+    "@xmldom/xmldom": "0.8.12",
     "fast-xml-parser": "5.5.7",
     "@types/markdown-it": "14.1.1"
   },

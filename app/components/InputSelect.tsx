@@ -60,7 +60,7 @@ type Props = Omit<React.HTMLAttributes<HTMLButtonElement>, "onChange"> & {
   /* Label for the select menu. */
   label: string;
   /* When true, label is hidden in an accessible manner. */
-  hideLabel?: boolean;
+  labelHidden?: boolean;
   /* When true, menu is disabled. */
   disabled?: boolean;
   /* When true, width of the menu trigger is restricted. Otherwise, takes up the full width of parent. */
@@ -76,7 +76,7 @@ export const InputSelect = React.forwardRef<HTMLButtonElement, Props>(
       value,
       onChange,
       label,
-      hideLabel,
+      labelHidden,
       short,
       help,
       ...triggerProps
@@ -149,7 +149,7 @@ export const InputSelect = React.forwardRef<HTMLButtonElement, Props>(
 
     return (
       <Wrapper short={short}>
-        <Label text={label} hidden={hideLabel ?? false} help={help} />
+        <Label text={label} hidden={labelHidden ?? false} help={help} />
         <InputSelectRoot
           open={open}
           onOpenChange={setOpen}
@@ -188,7 +188,7 @@ const MobileSelect = React.forwardRef<HTMLButtonElement, MobileSelectProps>(
       value,
       onChange,
       label,
-      hideLabel,
+      labelHidden,
       disabled,
       short,
       placeholder,
@@ -252,7 +252,7 @@ const MobileSelect = React.forwardRef<HTMLButtonElement, MobileSelectProps>(
 
     return (
       <Wrapper>
-        <Label text={label} hidden={hideLabel ?? false} />
+        <Label text={label} hidden={labelHidden ?? false} />
         <Drawer open={open} onOpenChange={setOpen}>
           <DrawerTrigger asChild>
             <SelectButton
@@ -365,8 +365,8 @@ const IconWrapper = styled.span`
   align-items: center;
   width: 24px;
   height: 24px;
-  margin-left: -4px;
-  margin-right: 4px;
+  margin-inline-start: -4px;
+  margin-inline-end: 4px;
   overflow: hidden;
   flex-shrink: 0;
 `;
