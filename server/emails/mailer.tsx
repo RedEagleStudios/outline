@@ -9,6 +9,75 @@ import Logger from "@server/logging/Logger";
 import { trace } from "@server/logging/tracing";
 import { baseStyles } from "./templates/components/EmailLayout";
 
+/**
+ * Creates a nodemailer-compatible transport that sends emails via the Resend
+ * HTTP API. Used when SMTP ports are blocked (e.g. Railway).
+ *
+ * @param apiKey - the Resend API key.
+ * @returns a nodemailer transport object.
+ */
+function createResendTransport(apiKey: string) {
+  return {
+    name: "ResendHTTP",
+    version: "1.0.0",
+    send(
+      mail: { data: Record<string, unknown> },
+      callback: (err: Error | null, info?: { messageId: string }) => void
+    ) {
+      const data = mail.data as {
+        from?: string | EmailAddress;
+        to?: string;
+        subject?: string;
+        html?: string;
+        text?: string;
+        replyTo?: string;
+        headers?: Record<string, string>;
+      };
+
+      const fromAddress =
+        typeof data.from === "object" && data.from !== null
+          ? (data.from as EmailAddress).address
+          : data.from;
+
+      const body = JSON.stringify({
+        from: fromAddress,
+        to: [data.to],
+        subject: data.subject,
+        html: data.html,
+        text: data.text,
+        reply_to: data.replyTo,
+      });
+
+      fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body,
+      })
+        .then(async (res) => {
+          const json = (await res.json()) as {
+            id?: string;
+            message?: string;
+          };
+          if (!res.ok) {
+            callback(
+              new Error(
+                `Resend API error ${res.status}: ${json.message ?? res.statusText}`
+              )
+            );
+            return;
+          }
+          callback(null, { messageId: json.id ?? "" });
+        })
+        .catch((err: Error) => {
+          callback(err);
+        });
+    },
+  };
+}
+
 const useTestEmailService = env.isDevelopment && !env.SMTP_USERNAME;
 
 type SendMailOptions = {
@@ -35,7 +104,12 @@ export class Mailer {
   transporter: Transporter | undefined;
 
   constructor() {
-    if (env.SMTP_HOST || env.SMTP_SERVICE) {
+    if (env.RESEND_API_KEY) {
+      this.transporter = nodemailer.createTransport(
+        createResendTransport(env.RESEND_API_KEY) as unknown as SMTPTransport.Options
+      );
+      Logger.info("email", "Using Resend HTTP API transport");
+    } else if (env.SMTP_HOST || env.SMTP_SERVICE) {
       this.transporter = nodemailer.createTransport(this.getOptions());
     }
     if (useTestEmailService) {

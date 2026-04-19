@@ -374,9 +374,17 @@ export class Environment {
   @IsInCaseInsensitive(Object.keys(wellKnownServices))
   public SMTP_SERVICE = this.toOptionalString(environment.SMTP_SERVICE);
 
+  /**
+   * The API key for Resend email service. When set, emails are sent via
+   * Resend's HTTP API instead of SMTP, which is useful when outbound SMTP
+   * ports are blocked (e.g. Railway).
+   */
+  public RESEND_API_KEY = this.toOptionalString(environment.RESEND_API_KEY);
+
   @Public
   public EMAIL_ENABLED =
-    !!(this.SMTP_HOST || this.SMTP_SERVICE) || this.isDevelopment;
+    !!(this.SMTP_HOST || this.SMTP_SERVICE || this.RESEND_API_KEY) ||
+    this.isDevelopment;
 
   /**
    * Optional hostname of the client, used for identifying to the server
