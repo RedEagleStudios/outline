@@ -274,7 +274,7 @@ export function documentTools(server: McpServer, scopes: string[]) {
       {
         title: "Create document",
         description:
-          "Creates a new document. Requires a collectionId to place the document in a collection, or parentDocumentId to nest it under an existing document.",
+          "Creates a new document. Requires a collectionId to place the document in a collection, or parentDocumentId to nest it under an existing document. NOTE: `text` is parsed as markdown, which cannot express node-level attributes like table cell background color, column widths, image dimensions, or table full-width layout. If you need those preserved on initial creation, pass a full ProseMirror JSON document via update_document with `data` immediately after creating.",
         annotations: {
           idempotentHint: false,
           readOnlyHint: false,
@@ -306,6 +306,12 @@ export function documentTools(server: McpServer, scopes: string[]) {
             .optional()
             .describe(
               "Whether to publish the document. Defaults to true. Set to false to create as a draft."
+            ),
+          fullWidth: z
+            .boolean()
+            .optional()
+            .describe(
+              "Whether the document should render in full-width mode. Defaults to false."
             ),
         },
       },
@@ -347,6 +353,7 @@ export function documentTools(server: McpServer, scopes: string[]) {
             parentDocumentId: parentDocumentId,
             publish: input.publish !== false,
             collectionId: collection?.id,
+            fullWidth: input.fullWidth,
           });
 
           const { text, ...attributes } = await presentDocument(
@@ -512,7 +519,7 @@ export function documentTools(server: McpServer, scopes: string[]) {
       {
         title: "Update document",
         description:
-          'Updates an existing document by its ID. Only the fields provided will be updated. IMPORTANT: When editing an existing document\'s content, always prefer editMode "patch" with findText and text — this surgically replaces only the matched section and preserves all rich formatting (highlights, comments, table widths, etc) in the rest of the document. Using "replace" will overwrite the entire document and lose any formatting that cannot be represented in markdown. For batched edits, prefer multi_patch_document over repeated calls. For lossless round-trips of node-level attributes (e.g. table cell colors, column widths, image dimensions) that markdown cannot express, pass `data` (ProseMirror JSON) instead of `text`, optionally combined with `disableSmartTypography: true` for exact-byte preservation.',
+          'Updates an existing document by its ID. Only the fields provided will be updated.\n\n⚠️ STYLING LOSS WARNING: Markdown cannot represent many rich attributes. Passing `text` in the default "replace" mode (or omitting editMode) performs a full markdown round-trip that WILL DISCARD: table cell background colors, table column widths, table full-width layout, image dimensions, highlight/comment marks, and other node-level attributes not expressible in markdown. The document structure is rebuilt from the markdown, so any styling the caller did not re-encode is gone.\n\nSafe paths to preserve styling:\n  • Metadata only (title, icon, color, fullWidth, publish) — omit `text`/`data`/`patches`; content untouched.\n  • Surgical content edits — use editMode "patch" with findText+text, or `patches` / multi_patch_document. Only matched ranges change; rest preserved byte-for-byte.\n  • Full replacement that must preserve attrs — use `data` (ProseMirror JSON from get_document_data), NOT `text`. Optionally pair with `disableSmartTypography: true`.\n  • Per-attribute edits on tables — use the dedicated MCP tools (set_table_cell_background, set_table_column_width, set_table_layout, merge_table_cells, split_table_cell) or update_document_block for single-block surgery.\n\nFor batched edits, prefer multi_patch_document over repeated calls.',
         annotations: {
           idempotentHint: true,
           readOnlyHint: false,
@@ -529,7 +536,7 @@ export function documentTools(server: McpServer, scopes: string[]) {
             .string()
             .optional()
             .describe(
-              'The markdown content to apply. In "replace" mode this becomes the entire document. In "append"/"prepend" mode it is added to the end/beginning. In "patch" mode this is the replacement text for the matched findText. Mutually exclusive with `data` and `patches`.'
+              'The markdown content to apply. In "replace" mode this becomes the entire document. In "append"/"prepend" mode it is added to the end/beginning. In "patch" mode this is the replacement text for the matched findText. Mutually exclusive with `data` and `patches`. ⚠️ In "replace" mode the markdown round-trip DISCARDS styling that markdown cannot express (table cell colors, column widths, table full-width layout, image dimensions, highlight/comment marks). Use `data`, `patches`, or editMode "patch" to preserve them.'
             ),
           data: z
             .record(z.string(), z.unknown())
@@ -587,6 +594,12 @@ export function documentTools(server: McpServer, scopes: string[]) {
             .optional()
             .describe(
               "Set to true to publish a draft document, or false to convert a published document back to a draft."
+            ),
+          fullWidth: z
+            .boolean()
+            .optional()
+            .describe(
+              "Whether the document should render in full-width mode (stretching all tables and content across the available width)."
             ),
         },
       },

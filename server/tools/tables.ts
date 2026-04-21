@@ -6,6 +6,7 @@ import { authorize } from "@server/policies";
 import { presentDocument } from "@server/presenters";
 import { sequelize } from "@server/storage/database";
 import AuthenticationHelper from "@shared/helpers/AuthenticationHelper";
+import { TableLayout } from "@shared/editor/types";
 import {
   buildAPIContext,
   error,
@@ -306,6 +307,71 @@ export function tableTools(server: McpServer, scopes: string[]) {
             input.tableIndex,
             input.row,
             input.col
+          );
+          await document.save({ transaction });
+
+          return success(
+            pathToUrl(
+              user.team,
+              await presentDocument(undefined, document, {
+                includeData: false,
+                includeText: false,
+                includeUpdatedAt: true,
+              })
+            )
+          );
+        });
+      } catch (message) {
+        return error(message);
+      }
+    })
+  );
+
+  server.registerTool(
+    "set_table_layout",
+    {
+      title: "Set table layout (full-width / default)",
+      description:
+        'Toggles the layout of a single table between full-width and default. Pass layout "full-width" to stretch the table across the document, or null to revert to the default content-sized layout. The table is identified by its zero-based index among top-level tables in the document.',
+      annotations: {
+        idempotentHint: true,
+        readOnlyHint: false,
+      },
+      inputSchema: {
+        documentId: z
+          .string()
+          .describe("The unique identifier of the document to update."),
+        tableIndex: z
+          .number()
+          .int()
+          .min(0)
+          .describe("Zero-based index of the target table."),
+        layout: z
+          .enum(["full-width"])
+          .nullable()
+          .describe(
+            'Layout to apply: "full-width" to stretch the table, or null for default.'
+          ),
+      },
+    },
+    withTracing("set_table_layout", async (input, context) => {
+      try {
+        const ctx = buildAPIContext(context);
+        const { user } = ctx.state.auth;
+
+        return await sequelize.transaction(async (transaction) => {
+          let document = await Document.findByPk(input.documentId, {
+            userId: user.id,
+            includeState: true,
+            rejectOnEmpty: true,
+            transaction,
+          });
+          authorize(user, "update", document);
+
+          document = DocumentHelper.applyTableSetLayout(
+            document,
+            input.tableIndex,
+            input.layout === "full-width" ? TableLayout.fullWidth : null
           );
           await document.save({ transaction });
 

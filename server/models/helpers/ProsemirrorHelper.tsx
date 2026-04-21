@@ -12,6 +12,7 @@ import { prosemirrorToYDoc } from "y-prosemirror";
 import * as Y from "yjs";
 import Diff from "@shared/editor/extensions/Diff";
 import { EditorStyleHelper } from "@shared/editor/styles/EditorStyleHelper";
+import { TableLayout } from "@shared/editor/types";
 import type { ExtendedChange } from "@shared/editor/lib/ChangesetHelper";
 import EditorContainer from "@shared/editor/components/Styles";
 import GlobalStyles from "@shared/styles/globals";
@@ -1147,6 +1148,31 @@ export class ProsemirrorHelper extends SharedProsemirrorHelper {
       );
     }
 
+    return cloned;
+  }
+
+  /**
+   * Sets the layout attribute on a specific table. Pass `TableLayout.fullWidth`
+   * to stretch the table across the document width, or `null` to revert to the
+   * default content-sized layout.
+   *
+   * @param doc The document JSON to update.
+   * @param tableIndex Zero-based index of the target table among top-level nodes.
+   * @param layout The layout to set, or `null` to clear.
+   * @returns A new ProsemirrorData JSON object with the change applied.
+   * @throws ValidationError when no table exists at the given index.
+   */
+  static setTableLayout(
+    doc: ProsemirrorData,
+    tableIndex: number,
+    layout: TableLayout | null
+  ): ProsemirrorData {
+    const cloned = JSON.parse(JSON.stringify(doc)) as ProsemirrorData;
+    const table = ProsemirrorHelper.findTable(cloned, tableIndex);
+    table.attrs = {
+      ...(table.attrs ?? {}),
+      layout,
+    };
     return cloned;
   }
 

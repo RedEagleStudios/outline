@@ -10,6 +10,7 @@ import {
 } from "@shared/editor/lib/ChangesetHelper";
 import textBetween from "@shared/editor/lib/textBetween";
 import { EditorStyleHelper } from "@shared/editor/styles/EditorStyleHelper";
+import { TableLayout } from "@shared/editor/types";
 import type { NavigationNode, ProsemirrorData } from "@shared/types";
 import { IconType, TextEditMode } from "@shared/types";
 import { determineIconType } from "@shared/utils/icon";
@@ -880,6 +881,32 @@ export class DocumentHelper {
       tableIndex,
       row,
       col
+    );
+    return DocumentHelper.applyProsemirrorDataToDocument(document, next);
+  }
+
+  /**
+   * Applies a layout change to a specific table in the document (toggling
+   * between full-width and default content-sized layout) and persists the
+   * update via {@link applyProsemirrorDataToDocument}.
+   *
+   * @param document The document to update.
+   * @param tableIndex Zero-based index of the target table.
+   * @param layout The layout to set (`TableLayout.fullWidth` or `null`).
+   * @returns The modified document (not yet saved).
+   */
+  static applyTableSetLayout(
+    document: Document,
+    tableIndex: number,
+    layout: TableLayout | null
+  ): Document {
+    const current = DocumentHelper.toProsemirror(document).toJSON() as
+      | ProsemirrorData
+      | Record<string, unknown>;
+    const next = ProsemirrorHelper.setTableLayout(
+      current as ProsemirrorData,
+      tableIndex,
+      layout
     );
     return DocumentHelper.applyProsemirrorDataToDocument(document, next);
   }

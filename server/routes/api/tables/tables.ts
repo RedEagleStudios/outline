@@ -9,6 +9,7 @@ import { authorize } from "@server/policies";
 import { presentDocument, presentPolicies } from "@server/presenters";
 import type { APIContext } from "@server/types";
 import { RateLimiterStrategy } from "@server/utils/RateLimiter";
+import { TableLayout } from "@shared/editor/types";
 import * as T from "./schema";
 
 const router = new Router();
@@ -138,6 +139,38 @@ router.post(
       tableIndex,
       row,
       col
+    );
+    await document.save({ transaction: tx });
+
+    ctx.body = {
+      data: await presentDocument(ctx, document),
+      policies: presentPolicies(user, [document]),
+    };
+  }
+);
+
+router.post(
+  "tables.setLayout",
+  rateLimiter(RateLimiterStrategy.TwentyFivePerMinute),
+  auth(),
+  validate(T.TablesSetLayoutSchema),
+  transaction(),
+  async (ctx: APIContext<T.TablesSetLayoutReq>) => {
+    const { transaction: tx } = ctx.state;
+    const { id, tableIndex, layout } = ctx.input.body;
+    const { user } = ctx.state.auth;
+
+    let document = await Document.findByPk(id, {
+      userId: user.id,
+      includeState: true,
+      transaction: tx,
+    });
+    authorize(user, "update", document);
+
+    document = DocumentHelper.applyTableSetLayout(
+      document,
+      tableIndex,
+      layout === "full-width" ? TableLayout.fullWidth : null
     );
     await document.save({ transaction: tx });
 

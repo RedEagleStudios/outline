@@ -66,3 +66,15 @@ export const TablesSplitCellSchema = BaseSchema.extend({
 });
 
 export type TablesSplitCellReq = z.infer<typeof TablesSplitCellSchema>;
+
+export const TablesSetLayoutSchema = BaseSchema.extend({
+  body: BaseTableSchema.extend({
+    /**
+     * Layout to apply: "full-width" stretches the table across the document
+     * width; null reverts to the default content-sized layout.
+     */
+    layout: z.enum(["full-width"]).nullable(),
+  }),
+});
+
+export type TablesSetLayoutReq = z.infer<typeof TablesSetLayoutSchema>;
