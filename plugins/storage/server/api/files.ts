@@ -30,7 +30,7 @@ const router = new Router();
 router.post(
   "files.create",
   rateLimiter(RateLimiterStrategy.TenPerMinute),
-  auth(),
+  auth({ optional: true }),
   validate(T.FilesCreateSchema),
   timeout(30 * 60 * 1000), // 30 minutes for large file uploads
   multipart({
@@ -40,8 +40,7 @@ router.post(
     ),
   }),
   async (ctx: APIContext<T.FilesCreateReq>) => {
-    const actor = ctx.state.auth.user;
-    const { key } = ctx.input.body;
+    const { key, sig } = ctx.input.body;
     const file = ctx.input.file;
 
     const attachment = await Attachment.findOne({
@@ -49,8 +48,31 @@ router.post(
       rejectOnEmpty: true,
     });
 
-    if (attachment.userId !== actor.id) {
-      throw AuthorizationError("Invalid key");
+    if (sig) {
+      // Signed upload path: used by presigned POST envelopes issued for
+      // storage providers that do not perform their own request signing
+      // (e.g. LocalStorage). The signature binds a single key to an expiry,
+      // so the request is authenticated solely by possession of the signature.
+      const payload = getJWTPayload(sig);
+      if (payload.type !== "upload") {
+        throw AuthenticationError("Invalid signature type");
+      }
+      if (payload.key !== key) {
+        throw AuthenticationError("Signature does not match key");
+      }
+      try {
+        JWT.verify(sig, env.SECRET_KEY);
+      } catch (_err) {
+        throw AuthenticationError("Invalid signature");
+      }
+    } else {
+      const actor = ctx.state.auth.user;
+      if (!actor) {
+        throw AuthenticationError("Authentication required");
+      }
+      if (attachment.userId !== actor.id) {
+        throw AuthorizationError("Invalid key");
+      }
     }
 
     const declaredSize = Number(attachment.size);

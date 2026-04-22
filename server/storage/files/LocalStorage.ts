@@ -22,6 +22,20 @@ export default class LocalStorage extends BaseStorage {
     maxUploadSize: number,
     contentType = "image"
   ): Promise<Partial<PresignedPost>> {
+    // Mint a short-lived signature bound to the upload key. The signature
+    // authorizes a single POST to `/api/files.create` without requiring the
+    // caller to present a session cookie or bearer token – mirroring S3's
+    // presigned POST semantics for storage providers that cannot sign their
+    // own requests.
+    const sig = JWT.sign(
+      {
+        key,
+        type: "upload",
+      },
+      env.SECRET_KEY,
+      { expiresIn: 3600 }
+    );
+
     return Promise.resolve({
       url: this.getUrlForKey(key),
       fields: {
@@ -29,6 +43,7 @@ export default class LocalStorage extends BaseStorage {
         acl,
         maxUploadSize: String(maxUploadSize),
         contentType,
+        sig,
         [CSRF.fieldName]: ctx.cookies?.get(CSRF.cookieName) || "",
       },
     });
