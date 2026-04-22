@@ -29,7 +29,7 @@ export default class LocalStorage extends BaseStorage {
         acl,
         maxUploadSize: String(maxUploadSize),
         contentType,
-        [CSRF.fieldName]: ctx.cookies.get(CSRF.cookieName) || "",
+        [CSRF.fieldName]: ctx.cookies?.get(CSRF.cookieName) || "",
       },
     });
   }
