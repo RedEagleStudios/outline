@@ -52,10 +52,12 @@ import {
 import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import { getMarkRange } from "../queries/getMarkRange";
 import { isInCode } from "../queries/isInCode";
+import { transactionTouchesNodeTypes } from "../lib/transactionTouchesNodeTypes";
 import Node from "./Node";
 
 const DEFAULT_LANGUAGE = "javascript";
 const COLLAPSE_LINE_THRESHOLD = 12;
+const codeNodeTypes = new Set(["code_fence", "code_block"]);
 
 interface CollapseState {
   /** Positions of code blocks with more than COLLAPSE_LINE_THRESHOLD lines. */
@@ -144,6 +146,22 @@ function buildCollapseState(
     collapsedBlocks,
     decorations: DecorationSet.create(doc, decorations),
   };
+}
+
+function mapPositions(
+  positions: Set<number>,
+  mapping: Parameters<DecorationSet["map"]>[0]
+): Set<number> {
+  const mapped = new Set<number>();
+
+  for (const pos of positions) {
+    const result = mapping.mapResult(pos);
+    if (!result.deleted) {
+      mapped.add(result.pos);
+    }
+  }
+
+  return mapped;
 }
 
 export default class CodeFence extends Node {
@@ -434,6 +452,24 @@ export default class CodeFence extends Node {
             // Recompute tall blocks on doc changes, preserving
             // user collapse/expand choices where possible.
             if (tr.docChanged) {
+              if (
+                !transactionTouchesNodeTypes(
+                  tr,
+                  _oldState,
+                  newState,
+                  codeNodeTypes
+                )
+              ) {
+                return {
+                  tallBlocks: mapPositions(prev.tallBlocks, tr.mapping),
+                  collapsedBlocks: mapPositions(
+                    prev.collapsedBlocks,
+                    tr.mapping
+                  ),
+                  decorations: prev.decorations.map(tr.mapping, tr.doc),
+                };
+              }
+
               const tallBlocks = findTallBlocks(newState.doc);
               const collapsedBlocks = new Set<number>();
 

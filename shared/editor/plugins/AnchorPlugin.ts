@@ -3,6 +3,9 @@ import { ProsemirrorHelper } from "@shared/utils/ProsemirrorHelper";
 import type { EditorState } from "prosemirror-state";
 import { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
+import { transactionTouchesNodeTypes } from "../lib/transactionTouchesNodeTypes";
+
+const anchorNodeTypes = new Set(["heading", "image"]);
 
 export class AnchorPlugin extends Plugin {
   constructor() {
@@ -14,6 +17,19 @@ export class AnchorPlugin extends Plugin {
         apply: (tr, pluginState, oldState, newState) => {
           // Only recompute if doc changed
           if (tr.docChanged) {
+            if (
+              !transactionTouchesNodeTypes(
+                tr,
+                oldState,
+                newState,
+                anchorNodeTypes
+              )
+            ) {
+              return {
+                decorations: pluginState.decorations.map(tr.mapping, tr.doc),
+              };
+            }
+
             return { decorations: this.createDecorations(newState) };
           }
           return pluginState;

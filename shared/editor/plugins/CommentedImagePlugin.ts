@@ -1,6 +1,9 @@
 import type { EditorState } from "prosemirror-state";
 import { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
+import { transactionTouchesNodeTypes } from "../lib/transactionTouchesNodeTypes";
+
+const imageNodeTypes = new Set(["image"]);
 
 /**
  * Plugin that applies a light outline decoration to image nodes that have
@@ -14,8 +17,21 @@ export class CommentedImagePlugin extends Plugin {
         init: (_, state: EditorState) => ({
           decorations: this.createDecorations(state),
         }),
-        apply: (tr, pluginState, _oldState, newState) => {
+        apply: (tr, pluginState, oldState, newState) => {
           if (tr.docChanged) {
+            if (
+              !transactionTouchesNodeTypes(
+                tr,
+                oldState,
+                newState,
+                imageNodeTypes
+              )
+            ) {
+              return {
+                decorations: pluginState.decorations.map(tr.mapping, tr.doc),
+              };
+            }
+
             return { decorations: this.createDecorations(newState) };
           }
           return pluginState;

@@ -23,7 +23,7 @@ export class TableView extends ProsemirrorTableView {
       this.scrollable.addEventListener(
         "scroll",
         () => {
-          this.updateClassList(this.node);
+          this.scheduleClassListUpdate(this.node);
         },
         {
           passive: true,
@@ -47,12 +47,16 @@ export class TableView extends ProsemirrorTableView {
   }
 
   public destroy() {
+    this.cancelScheduledUpdates();
     this.cleanupStickyHeader();
   }
 
   public override update(node: Node) {
-    this.updateClassList(node);
-    return super.update(node);
+    const didUpdate = super.update(node);
+    if (didUpdate) {
+      this.scheduleClassListUpdate(node);
+    }
+    return didUpdate;
   }
 
   public override ignoreMutation(record: MutationRecord): boolean {
@@ -106,9 +110,31 @@ export class TableView extends ProsemirrorTableView {
     }
   }
 
+  private scheduleClassListUpdate(node: Node) {
+    if (!isBrowser) {
+      return;
+    }
+
+    this.node = node;
+    if (this.classListAnimationFrame !== null) {
+      return;
+    }
+
+    this.classListAnimationFrame = requestAnimationFrame(() => {
+      this.classListAnimationFrame = null;
+      if (this.dom) {
+        this.updateClassList(this.node);
+      }
+    });
+  }
+
   private scrollable: HTMLDivElement | null = null;
 
   private scrollHandler: (() => void) | null = null;
+
+  private classListAnimationFrame: number | null = null;
+
+  private stickyHeaderAnimationFrame: number | null = null;
 
   /** Default height of the app's fixed header */
   private static readonly HEADER_HEIGHT = 60;
@@ -130,7 +156,7 @@ export class TableView extends ProsemirrorTableView {
       }
 
       this.scrollHandler = () => {
-        this.updateStickyHeader();
+        this.scheduleStickyHeaderUpdate();
       };
 
       // Use capture phase on document to catch all scroll events
@@ -162,6 +188,33 @@ export class TableView extends ProsemirrorTableView {
     // Reset sticky header state
     this.dom.classList.remove(EditorStyleHelper.tableStickyHeader);
     this.dom.style.removeProperty("--sticky-scroll-offset");
+  }
+
+  private scheduleStickyHeaderUpdate() {
+    if (!isBrowser || this.stickyHeaderAnimationFrame !== null) {
+      return;
+    }
+
+    this.stickyHeaderAnimationFrame = requestAnimationFrame(() => {
+      this.stickyHeaderAnimationFrame = null;
+      this.updateStickyHeader();
+    });
+  }
+
+  private cancelScheduledUpdates() {
+    if (!isBrowser) {
+      return;
+    }
+
+    if (this.classListAnimationFrame !== null) {
+      cancelAnimationFrame(this.classListAnimationFrame);
+      this.classListAnimationFrame = null;
+    }
+
+    if (this.stickyHeaderAnimationFrame !== null) {
+      cancelAnimationFrame(this.stickyHeaderAnimationFrame);
+      this.stickyHeaderAnimationFrame = null;
+    }
   }
 
   /**

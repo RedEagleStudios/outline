@@ -6,8 +6,9 @@ import { cn } from "../styles/utils";
 import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import { Decoration, DecorationSet } from "prosemirror-view";
 import type { EditorView } from "prosemirror-view";
-import { Plugin } from "prosemirror-state";
+import { Plugin, PluginKey } from "prosemirror-state";
 import { addRowBefore, selectRow, selectTable } from "../commands/table";
+import { shouldRebuildTableControlDecorations } from "../lib/shouldRebuildTableControlDecorations";
 import {
   getCellsInRow,
   getRowsInTable,
@@ -19,6 +20,10 @@ import {
   columnDragPluginKey,
   type RowDragState,
 } from "../plugins/TableDragState";
+
+const tableRowDecorationsPluginKey = new PluginKey<DecorationSet>(
+  "table-row-decorations"
+);
 
 /**
  * Sets up drag tracking for row grip interactions.
@@ -235,118 +240,146 @@ export default class TableRow extends Node {
       );
     }
 
+    const createRowDecorations = (state: EditorState) => {
+      if (!this.editor.view?.editable) {
+        return DecorationSet.empty;
+      }
+
+      // Hide add row buttons when dragging rows or columns
+      const rowDragState = rowDragPluginKey.getState(state);
+      const columnDragState = columnDragPluginKey.getState(state);
+      const isDragging =
+        rowDragState?.isDragging || columnDragState?.isDragging;
+
+      const { doc } = state;
+      const decorations: Decoration[] = [];
+      const rows = getRowsInTable(state);
+
+      if (rows && rows.length > 0 && isInTable(state)) {
+        const rect = selectedRect(state);
+        const firstColumnCells = new Map<number, number>();
+
+        // Map each visual row index to its first column cell position
+        for (let row = 0; row < rect.map.height; row++) {
+          const cellPos = rect.tableStart + rect.map.map[row * rect.map.width];
+          firstColumnCells.set(row, cellPos);
+        }
+
+        rows.forEach((pos, visualIndex) => {
+          const index = visualIndex;
+
+          // Check if this row's first column is part of a merged cell from above
+          const currentFirstCellPos = firstColumnCells.get(visualIndex);
+          let isFirstColumnMerged = false;
+
+          for (let prevRow = 0; prevRow < visualIndex; prevRow++) {
+            if (firstColumnCells.get(prevRow) === currentFirstCellPos) {
+              isFirstColumnMerged = true;
+              break;
+            }
+          }
+
+          // Skip decorations for rows where first column is merged from above
+          if (isFirstColumnMerged) {
+            return;
+          }
+
+          if (index === 0) {
+            const className = cn(EditorStyleHelper.tableGrip, {
+              selected: isTableSelected(state),
+            });
+
+            decorations.push(
+              Decoration.widget(
+                pos + 1,
+                () => {
+                  const grip = document.createElement("a");
+                  grip.role = "button";
+                  grip.className = className;
+                  return grip;
+                },
+                {
+                  key: className,
+                }
+              )
+            );
+          }
+
+          const className = cn(EditorStyleHelper.tableGripRow, {
+            selected: isRowSelected(index)(state) || isTableSelected(state),
+            first: index === 0,
+            last: visualIndex === rows.length - 1,
+          });
+
+          decorations.push(
+            Decoration.widget(
+              pos + 1,
+              () => {
+                const grip = document.createElement("a");
+                grip.role = "button";
+                grip.className = className;
+                grip.dataset.index = index.toString();
+                return grip;
+              },
+              {
+                key: cn(className, index),
+              }
+            )
+          );
+
+          if (!isDragging) {
+            if (index === 0) {
+              decorations.push(buildAddRowDecoration(pos, index));
+            }
+
+            // Calculate the rowspan of the first column cell to determine the
+            // correct index for the "add row after" button. When cells are
+            // merged vertically, we need to insert after all merged rows.
+            const firstCellNode =
+              currentFirstCellPos !== undefined
+                ? doc.nodeAt(currentFirstCellPos)
+                : null;
+            const rowspan = firstCellNode?.attrs.rowspan ?? 1;
+            decorations.push(buildAddRowDecoration(pos, index + rowspan));
+          }
+        });
+      }
+
+      return DecorationSet.create(doc, decorations);
+    };
+
     return [
       rowDragPlugin,
-      new Plugin({
+      new Plugin<DecorationSet>({
+        key: tableRowDecorationsPluginKey,
+        state: {
+          init: (_, state) => createRowDecorations(state),
+          apply: (tr, pluginState, oldState, newState) => {
+            if (
+              !tr.selectionSet &&
+              !tr.docChanged &&
+              !tr.getMeta(columnDragPluginKey) &&
+              !tr.getMeta(rowDragPluginKey)
+            ) {
+              return pluginState;
+            }
+
+            if (
+              !tr.getMeta(columnDragPluginKey) &&
+              !tr.getMeta(rowDragPluginKey) &&
+              !shouldRebuildTableControlDecorations(tr, oldState, newState)
+            ) {
+              return tr.docChanged
+                ? pluginState.map(tr.mapping, tr.doc)
+                : pluginState;
+            }
+
+            return createRowDecorations(newState);
+          },
+        },
         props: {
-          decorations: (state) => {
-            if (!this.editor.view?.editable) {
-              return;
-            }
-
-            // Hide add row buttons when dragging rows or columns
-            const rowDragState = rowDragPluginKey.getState(state);
-            const columnDragState = columnDragPluginKey.getState(state);
-            const isDragging =
-              rowDragState?.isDragging || columnDragState?.isDragging;
-
-            const { doc } = state;
-            const decorations: Decoration[] = [];
-            const rows = getRowsInTable(state);
-
-            if (rows && rows.length > 0 && isInTable(state)) {
-              const rect = selectedRect(state);
-              const firstColumnCells = new Map<number, number>();
-
-              // Map each visual row index to its first column cell position
-              for (let row = 0; row < rect.map.height; row++) {
-                const cellPos =
-                  rect.tableStart + rect.map.map[row * rect.map.width];
-                firstColumnCells.set(row, cellPos);
-              }
-
-              rows.forEach((pos, visualIndex) => {
-                const index = visualIndex;
-
-                // Check if this row's first column is part of a merged cell from above
-                const currentFirstCellPos = firstColumnCells.get(visualIndex);
-                let isFirstColumnMerged = false;
-
-                for (let prevRow = 0; prevRow < visualIndex; prevRow++) {
-                  if (firstColumnCells.get(prevRow) === currentFirstCellPos) {
-                    isFirstColumnMerged = true;
-                    break;
-                  }
-                }
-
-                // Skip decorations for rows where first column is merged from above
-                if (isFirstColumnMerged) {
-                  return;
-                }
-
-                if (index === 0) {
-                  const className = cn(EditorStyleHelper.tableGrip, {
-                    selected: isTableSelected(state),
-                  });
-
-                  decorations.push(
-                    Decoration.widget(
-                      pos + 1,
-                      () => {
-                        const grip = document.createElement("a");
-                        grip.role = "button";
-                        grip.className = className;
-                        return grip;
-                      },
-                      {
-                        key: className,
-                      }
-                    )
-                  );
-                }
-
-                const className = cn(EditorStyleHelper.tableGripRow, {
-                  selected:
-                    isRowSelected(index)(state) || isTableSelected(state),
-                  first: index === 0,
-                  last: visualIndex === rows.length - 1,
-                });
-
-                decorations.push(
-                  Decoration.widget(
-                    pos + 1,
-                    () => {
-                      const grip = document.createElement("a");
-                      grip.role = "button";
-                      grip.className = className;
-                      grip.dataset.index = index.toString();
-                      return grip;
-                    },
-                    {
-                      key: cn(className, index),
-                    }
-                  )
-                );
-
-                if (!isDragging) {
-                  if (index === 0) {
-                    decorations.push(buildAddRowDecoration(pos, index));
-                  }
-
-                  // Calculate the rowspan of the first column cell to determine the
-                  // correct index for the "add row after" button. When cells are
-                  // merged vertically, we need to insert after all merged rows.
-                  const firstCellNode =
-                    currentFirstCellPos !== undefined
-                      ? doc.nodeAt(currentFirstCellPos)
-                      : null;
-                  const rowspan = firstCellNode?.attrs.rowspan ?? 1;
-                  decorations.push(buildAddRowDecoration(pos, index + rowspan));
-                }
-              });
-            }
-
-            return DecorationSet.create(doc, decorations);
+          decorations(state) {
+            return this.getState(state);
           },
           handleDOMEvents: {
             mousedown: (view, event) => {

@@ -18,9 +18,12 @@ import splitHeading from "../commands/splitHeading";
 import toggleBlockType from "../commands/toggleBlockType";
 import { headingToPersistenceKey } from "../lib/headingToSlug";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
+import { transactionTouchesNodeTypes } from "../lib/transactionTouchesNodeTypes";
 import { findCollapsedNodes } from "../queries/findCollapsedNodes";
 import Node from "./Node";
 import { EditorStyleHelper } from "../styles/EditorStyleHelper";
+
+const headingNodeTypes = new Set(["heading"]);
 
 export enum HeadingLevel {
   One = 1,
@@ -285,8 +288,19 @@ export default class Heading extends Node {
         init(_, { doc }) {
           return DecorationSet.create(doc, createWidgetDecorations(doc));
         },
-        apply(tr, oldDecoSet) {
+        apply(tr, oldDecoSet, oldState, newState) {
           if (tr.docChanged) {
+            if (
+              !transactionTouchesNodeTypes(
+                tr,
+                oldState,
+                newState,
+                headingNodeTypes
+              )
+            ) {
+              return oldDecoSet.map(tr.mapping, tr.doc);
+            }
+
             return DecorationSet.create(
               tr.doc,
               createWidgetDecorations(tr.doc)
@@ -313,8 +327,19 @@ export default class Heading extends Node {
           );
           return DecorationSet.create(doc, decorations);
         },
-        apply(tr, oldDecoSet) {
+        apply(tr, oldDecoSet, oldState, newState) {
           if (tr.docChanged) {
+            if (
+              !transactionTouchesNodeTypes(
+                tr,
+                oldState,
+                newState,
+                headingNodeTypes
+              )
+            ) {
+              return oldDecoSet.map(tr.mapping, tr.doc);
+            }
+
             const decorations: Decoration[] = findCollapsedNodes(tr.doc).map(
               (block) =>
                 Decoration.node(block.pos, block.pos + block.node.nodeSize, {

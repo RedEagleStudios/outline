@@ -9,6 +9,7 @@ import { Plugin, PluginKey } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 import { TableMap } from "prosemirror-tables";
 import { getCellAttrs, setCellAttrs } from "../lib/table";
+import { transactionChangesTableStructure } from "../lib/transactionChangesTableStructure";
 import Node from "./Node";
 import { presetColors, rgbaToHex } from "@shared/utils/color";
 import { parseToRgb, transparentize } from "polished";
@@ -82,6 +83,12 @@ export default class TableCell extends Node {
       doc.descendants((node: ProsemirrorNode, pos: number) => {
         if (node.type.spec.tableRole === "table") {
           const map = TableMap.get(node);
+          const cellIndexes = new Map<number, number>();
+          map.map.forEach((cellOffset, index) => {
+            if (!cellIndexes.has(cellOffset)) {
+              cellIndexes.set(cellOffset, index);
+            }
+          });
 
           // Mark cells in the first column and last row of this table
           node.descendants((cellNode: ProsemirrorNode, cellPos: number) => {
@@ -90,7 +97,7 @@ export default class TableCell extends Node {
               cellNode.type.spec.tableRole === "header_cell"
             ) {
               const cellOffset = cellPos;
-              const cellIndex = map.map.indexOf(cellOffset);
+              const cellIndex = cellIndexes.get(cellOffset) ?? -1;
 
               if (cellIndex !== -1) {
                 const col = cellIndex % map.width;
@@ -140,6 +147,10 @@ export default class TableCell extends Node {
             // Only recompute if document changed
             if (!tr.docChanged) {
               return pluginState;
+            }
+
+            if (!transactionChangesTableStructure(tr, oldState)) {
+              return pluginState.map(tr.mapping, tr.doc);
             }
 
             return createCellDecorations(newState);

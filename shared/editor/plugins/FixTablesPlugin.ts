@@ -3,6 +3,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import { Plugin } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { changedDescendants } from "../lib/changedDescendants";
+import { transactionChangesTableStructure } from "../lib/transactionChangesTableStructure";
 import { getCellsInColumn } from "../queries/table";
 
 /**
@@ -14,7 +15,7 @@ import { getCellsInColumn } from "../queries/table";
 export class FixTablesPlugin extends Plugin {
   constructor() {
     super({
-      appendTransaction: (_transactions, oldState, state) => {
+      appendTransaction: (transactions, oldState, state) => {
         let tr: Transaction | undefined;
         const check = (node: Node, pos: number) => {
           if (node.type.spec.tableRole === "table") {
@@ -24,6 +25,14 @@ export class FixTablesPlugin extends Plugin {
         if (!oldState) {
           state.doc.descendants(check);
         } else if (oldState.doc !== state.doc) {
+          if (
+            !transactions.some((transaction) =>
+              transactionChangesTableStructure(transaction, oldState)
+            )
+          ) {
+            return null;
+          }
+
           changedDescendants(oldState.doc, state.doc, 0, check);
         }
         return tr;

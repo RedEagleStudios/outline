@@ -1,7 +1,10 @@
-import type { EditorState } from "prosemirror-state";
+import type { Node as ProsemirrorNode } from "prosemirror-model";
+import type { EditorState, Transaction } from "prosemirror-state";
 import { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 import { EditorStyleHelper } from "../styles/EditorStyleHelper";
+
+const codeMarkTypes = new Set(["code_inline"]);
 
 interface CodeWordDecorationsConfig {
   /** CSS class to apply to word decorations */
@@ -21,9 +24,15 @@ class CodeWordDecorationsPlugin extends Plugin {
         init: (_, state: EditorState) => ({
           decorations: this.createDecorations(state, finalConfig),
         }),
-        apply: (tr, pluginState, _oldState, newState) => {
+        apply: (tr, pluginState, oldState, newState) => {
           // Only recompute if doc changed
           if (tr.docChanged) {
+            if (!transactionTouchesCodeMark(tr, oldState, newState)) {
+              return {
+                decorations: pluginState.decorations.map(tr.mapping, tr.doc),
+              };
+            }
+
             return {
               decorations: this.createDecorations(newState, finalConfig),
             };
@@ -97,4 +106,88 @@ class CodeWordDecorationsPlugin extends Plugin {
  */
 export function codeWordDecorations(config: CodeWordDecorationsConfig = {}) {
   return new CodeWordDecorationsPlugin(config);
+}
+
+function transactionTouchesCodeMark(
+  tr: Transaction,
+  oldState: EditorState,
+  _newState: EditorState
+) {
+  let currentDoc = oldState.doc;
+  for (let index = 0; index < tr.steps.length; index++) {
+    const step = tr.steps[index];
+    if (containsCodeMark(step.toJSON())) {
+      return true;
+    }
+
+    const nextDoc = step.apply(currentDoc).doc;
+    if (!nextDoc) {
+      return true;
+    }
+
+    let touchesCode = false;
+    step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
+      if (touchesCode) {
+        return;
+      }
+
+      touchesCode =
+        rangeTouchesCodeMark(currentDoc, oldStart, oldEnd) ||
+        rangeTouchesCodeMark(nextDoc, newStart, newEnd);
+    });
+
+    if (touchesCode) {
+      return true;
+    }
+
+    currentDoc = nextDoc;
+  }
+
+  return false;
+}
+
+function rangeTouchesCodeMark(doc: ProsemirrorNode, from: number, to: number) {
+  if (from === to) {
+    return false;
+  }
+
+  let touches = false;
+  doc.nodesBetween(from, to, (node) => {
+    if (
+      node.isText &&
+      node.marks.some((mark) => codeMarkTypes.has(mark.type.name))
+    ) {
+      touches = true;
+      return false;
+    }
+    return true;
+  });
+
+  return touches;
+}
+
+function containsCodeMark(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some(containsCodeMark);
+  }
+
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (
+      key === "type" &&
+      typeof child === "string" &&
+      codeMarkTypes.has(child)
+    ) {
+      return true;
+    }
+
+    if (containsCodeMark(child)) {
+      return true;
+    }
+  }
+
+  return false;
 }

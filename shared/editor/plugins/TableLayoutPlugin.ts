@@ -3,6 +3,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import { Plugin } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { changedDescendants } from "../lib/changedDescendants";
+import { transactionChangesTableStructure } from "../lib/transactionChangesTableStructure";
 
 /**
  * A ProseMirror plugin that watches for changes to the "layout" attribute on tables
@@ -30,6 +31,14 @@ export class TableLayoutPlugin extends Plugin {
           // Initial state - check all tables
           newState.doc.descendants(check);
         } else if (oldState.doc !== newState.doc) {
+          if (
+            !transactions.some((transaction) =>
+              transactionChangesTableStructure(transaction, oldState)
+            )
+          ) {
+            return null;
+          }
+
           // Document changed - check only changed tables
           changedDescendants(oldState.doc, newState.doc, 0, check);
         }

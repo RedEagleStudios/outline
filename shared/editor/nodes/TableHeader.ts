@@ -6,7 +6,9 @@ import type { EditorView } from "prosemirror-view";
 import { DecorationSet, Decoration } from "prosemirror-view";
 import { isInTable, moveTableColumn, TableMap } from "prosemirror-tables";
 import { addColumnBefore, selectColumn } from "../commands/table";
+import { shouldRebuildTableControlDecorations } from "../lib/shouldRebuildTableControlDecorations";
 import { getCellAttrs, setCellAttrs } from "../lib/table";
+import { transactionChangesTableStructure } from "../lib/transactionChangesTableStructure";
 import {
   getCellsInColumn,
   getCellsInRow,
@@ -327,12 +329,18 @@ export default class TableHeader extends Node {
       doc.descendants((node, pos) => {
         if (node.type.spec.tableRole === "table") {
           const map = TableMap.get(node);
+          const cellIndexes = new Map<number, number>();
+          map.map.forEach((cellOffset, index) => {
+            if (!cellIndexes.has(cellOffset)) {
+              cellIndexes.set(cellOffset, index);
+            }
+          });
 
           // Mark cells in the first column and last row of this table
           node.descendants((cellNode, cellPos) => {
             if (cellNode.type.spec.tableRole === "header_cell") {
               const cellOffset = cellPos;
-              const cellIndex = map.map.indexOf(cellOffset);
+              const cellIndex = cellIndexes.get(cellOffset) ?? -1;
 
               if (cellIndex !== -1) {
                 const col = cellIndex % map.width;
@@ -385,6 +393,10 @@ export default class TableHeader extends Node {
               return pluginState;
             }
 
+            if (!transactionChangesTableStructure(tr, oldState)) {
+              return pluginState.map(tr.mapping, tr.doc);
+            }
+
             return createHeaderDecorations(newState);
           },
         },
@@ -407,6 +419,16 @@ export default class TableHeader extends Node {
               !tr.getMeta(rowDragPluginKey)
             ) {
               return pluginState;
+            }
+
+            if (
+              !tr.getMeta(columnDragPluginKey) &&
+              !tr.getMeta(rowDragPluginKey) &&
+              !shouldRebuildTableControlDecorations(tr, oldState, newState)
+            ) {
+              return tr.docChanged
+                ? pluginState.map(tr.mapping, tr.doc)
+                : pluginState;
             }
 
             return createColumnDecorations(newState);
