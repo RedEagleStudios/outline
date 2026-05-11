@@ -137,6 +137,75 @@ export default class ListItem extends Node {
           decorations(state) {
             return this.getState(state);
           },
+          handleKeyDown: (view, event) => {
+            if (event.key !== "Backspace") {
+              return false;
+            }
+
+            const { state, dispatch } = view;
+
+            if (!state.selection.empty) {
+              return false;
+            }
+
+            const { $from } = state.selection;
+            const paragraphDepth = $from.depth;
+            const paragraph = $from.node(paragraphDepth);
+
+            if (
+              paragraph.type !== state.schema.nodes.paragraph ||
+              paragraph.textContent !== "" ||
+              $from.parentOffset !== 0
+            ) {
+              return false;
+            }
+
+            const listItemDepth = paragraphDepth - 1;
+            const listDepth = paragraphDepth - 2;
+            const listItem = $from.node(listItemDepth);
+            const list = $from.node(listDepth);
+
+            if (
+              !["list_item", "checkbox_item"].includes(listItem.type.name) ||
+              list.childCount !== 1
+            ) {
+              return false;
+            }
+
+            let isInTableCell = false;
+            for (let depth = listDepth - 1; depth > 0; depth--) {
+              const node = $from.node(depth);
+
+              if (
+                node.type.spec.tableRole === "cell" ||
+                node.type.spec.tableRole === "header_cell"
+              ) {
+                isInTableCell = true;
+                break;
+              }
+            }
+
+            if (!isInTableCell) {
+              return false;
+            }
+
+            const marker = list.type.name === "ordered_list" ? "1. " : "- ";
+            const listStart = $from.before(listDepth);
+            const listEnd = $from.after(listDepth);
+            const replacement = state.schema.nodes.paragraph.create(
+              null,
+              state.schema.text(marker)
+            );
+            const tr = state.tr.replaceWith(listStart, listEnd, replacement);
+
+            dispatch(
+              tr.setSelection(
+                TextSelection.create(tr.doc, listStart + 1 + marker.length)
+              )
+            );
+
+            return true;
+          },
           handleDOMEvents: {
             mouseover: (view, event) => {
               if (!view.editable) {

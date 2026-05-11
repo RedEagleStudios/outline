@@ -3,6 +3,7 @@
 /* oxlint-disable no-undef */
 const { exec } = require("child_process");
 const { readdirSync, existsSync } = require("fs");
+const { copyFile, mkdir, rm } = require("fs/promises");
 
 const getDirectories = (source) =>
   readdirSync(source, { withFileTypes: true })
@@ -31,8 +32,18 @@ async function build() {
   console.log("Clean previous build…");
 
   await Promise.all([
-    execAsync("rm -rf ./build/server"),
-    execAsync("rm -rf ./build/plugins"),
+    rm("./build/server", {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    }),
+    rm("./build/plugins", {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    }),
   ]);
 
   const d = getDirectories("./plugins");
@@ -69,21 +80,27 @@ async function build() {
   // Copy static files
   console.log("Copying static files…");
   await Promise.all([
-    execAsync(
-      "cp ./server/collaboration/Procfile ./build/server/collaboration/Procfile"
+    copyFile(
+      "./server/collaboration/Procfile",
+      "./build/server/collaboration/Procfile"
     ),
-    execAsync(
-      "cp ./server/static/error.dev.html ./build/server/error.dev.html"
+    copyFile("./server/static/error.dev.html", "./build/server/error.dev.html"),
+    copyFile(
+      "./server/static/error.prod.html",
+      "./build/server/error.prod.html"
     ),
-    execAsync(
-      "cp ./server/static/error.prod.html ./build/server/error.prod.html"
-    ),
-    execAsync("cp package.json ./build"),
-    ...d.map(async (plugin) =>
-      execAsync(
-        `mkdir -p ./build/plugins/${plugin} && cp ./plugins/${plugin}/plugin.json ./build/plugins/${plugin}/plugin.json 2>/dev/null || :`
-      )
-    ),
+    copyFile("package.json", "./build/package.json"),
+    ...d.map(async (plugin) => {
+      const source = `./plugins/${plugin}/plugin.json`;
+
+      if (!existsSync(source)) {
+        return;
+      }
+
+      const destination = `./build/plugins/${plugin}/plugin.json`;
+      await mkdir(`./build/plugins/${plugin}`, { recursive: true });
+      await copyFile(source, destination);
+    }),
   ]);
 
   console.log("Done!");
