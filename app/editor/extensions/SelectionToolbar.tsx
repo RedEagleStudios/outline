@@ -9,6 +9,7 @@ import { isInNotice } from "@shared/editor/queries/isInNotice";
 import { isMarkActive } from "@shared/editor/queries/isMarkActive";
 import { isNodeActive } from "@shared/editor/queries/isNodeActive";
 import { SelectionToolbar } from "../components/SelectionToolbar";
+import { createAISelectionDecorationPlugin } from "../plugins/AISelectionDecoration";
 
 export default class SelectionToolbarExtension extends Extension {
   get name() {
@@ -21,6 +22,7 @@ export default class SelectionToolbarExtension extends Extension {
 
   get plugins(): Plugin[] {
     return [
+      createAISelectionDecorationPlugin(),
       new Plugin({
         view: () => ({
           update: this.handleUpdate,

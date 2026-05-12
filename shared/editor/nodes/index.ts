@@ -22,6 +22,7 @@ import CheckboxList from "./CheckboxList";
 import CodeBlock from "./CodeBlock";
 import CodeFence from "./CodeFence";
 import Doc from "./Doc";
+import Dropdown from "./Dropdown";
 import Embed from "./Embed";
 import Emoji from "./Emoji";
 import HardBreak from "./HardBreak";
@@ -115,6 +116,7 @@ export const richExtensions: Nodes = [
   TemplatePlaceholder,
   Math,
   MathBlock,
+  Dropdown,
   Mention,
   ToggleBlock,
   // Container type nodes should be last so that key handlers are registered for content inside

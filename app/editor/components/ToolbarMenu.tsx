@@ -147,13 +147,13 @@ function ToolbarMenu(props: Props) {
   const { state } = view;
 
   const handleClick = (item: MenuItem) => () => {
-    if (!item.name) {
-      return;
-    }
-
     // if item has an associated onClick prop, run it
     if (item.onClick) {
       item.onClick();
+      return;
+    }
+
+    if (!item.name) {
       return;
     }
 

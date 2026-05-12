@@ -20,6 +20,7 @@ import useBoolean from "~/hooks/useBoolean";
 import useDictionary from "~/hooks/useDictionary";
 import useEventListener from "~/hooks/useEventListener";
 import useMobile from "~/hooks/useMobile";
+import env from "~/env";
 import getAttachmentMenuItems from "../menus/attachment";
 import getCodeMenuItems from "../menus/code";
 import getDividerMenuItems from "../menus/divider";
@@ -30,12 +31,14 @@ import getReadOnlyMenuItems from "../menus/readOnly";
 import getTableMenuItems from "../menus/table";
 import getTableColMenuItems from "../menus/tableCol";
 import getTableRowMenuItems from "../menus/tableRow";
+import { aiSelectionDecorationPluginKey } from "../plugins/AISelectionDecoration";
 import {
   columnDragPluginKey,
   rowDragPluginKey,
 } from "@shared/editor/plugins/TableDragState";
 import { useEditor } from "./EditorContext";
 import { MediaLinkEditor } from "./MediaLinkEditor";
+import { AITextFormatter } from "./AITextFormatter";
 import FloatingToolbar from "./FloatingToolbar";
 import LinkEditor from "./LinkEditor";
 import ToolbarMenu from "./ToolbarMenu";
@@ -74,6 +77,7 @@ function useIsDragging(state: EditorState) {
 }
 
 enum Toolbar {
+  AI = "ai",
   Link = "link",
   Media = "media",
   Menu = "menu",
@@ -81,7 +85,8 @@ enum Toolbar {
 
 export function SelectionToolbar(props: Props) {
   const { readOnly = false } = props;
-  const { view, extensions, commands } = useEditor();
+  const editor = useEditor();
+  const { view, extensions, commands } = editor;
   const dictionary = useDictionary();
   const menuRef = React.useRef<HTMLDivElement | null>(null);
   const isMobile = useMobile();
@@ -93,6 +98,9 @@ export function SelectionToolbar(props: Props) {
   const [activeToolbar, setActiveToolbar] = React.useState<Toolbar | null>(
     null
   );
+  const clearAISelectionDecoration = React.useCallback(() => {
+    view.dispatch(view.state.tr.setMeta(aiSelectionDecorationPluginKey, null));
+  }, [view]);
 
   const linkMark =
     selection instanceof NodeSelection
@@ -101,12 +109,26 @@ export function SelectionToolbar(props: Props) {
 
   const isEmbedSelection =
     selection instanceof NodeSelection && selection.node.type.name === "embed";
+  const selectedText = React.useMemo(
+    () => state.doc.textBetween(selection.from, selection.to, "\n\n"),
+    [selection, state.doc]
+  );
+  const selectedMarkdown = React.useMemo(
+    () =>
+      view.state.selection.empty
+        ? ""
+        : editor.serializer.serialize(view.state.selection.content().content, {
+            softBreak: true,
+          }) || selectedText,
+    [editor.serializer, selectedText, view.state.selection]
+  );
 
   const isCodeSelection = isInCode(state, { onlyBlock: true });
   const isNoticeSelection = isInNotice(state);
 
   React.useLayoutEffect(() => {
     if (!isActive) {
+      clearAISelectionDecoration();
       setActiveToolbar(null);
       return;
     }
@@ -136,7 +158,13 @@ export function SelectionToolbar(props: Props) {
     isEmbedSelection,
     isCodeSelection,
     isNoticeSelection,
+    clearAISelectionDecoration,
   ]);
+
+  React.useEffect(
+    () => clearAISelectionDecoration,
+    [clearAISelectionDecoration]
+  );
 
   React.useLayoutEffect(() => {
     if (autoFocusLinkInput && activeToolbar !== Toolbar.Link) {
@@ -236,9 +264,30 @@ export function SelectionToolbar(props: Props) {
   const isAttachmentSelection =
     selection instanceof NodeSelection &&
     selection.node.type.name === "attachment";
+  const isInTableCellSelection = (() => {
+    for (let depth = selection.$from.depth; depth > 0; depth--) {
+      const node = selection.$from.node(depth);
+      if (node.type.name === "td" || node.type.name === "th") {
+        return true;
+      }
+    }
+
+    return false;
+  })();
 
   let items: MenuItem[] = [];
   let align: "center" | "start" | "end" = "center";
+  const aiFormattingEnabled =
+    env.AI_FORMATTING_ENABLED === true || env.AI_FORMATTING_ENABLED === "true";
+  const handleAIFormat = () => {
+    view.dispatch(
+      view.state.tr.setMeta(aiSelectionDecorationPluginKey, {
+        from: selection.from,
+        to: selection.to,
+      })
+    );
+    setActiveToolbar(Toolbar.AI);
+  };
 
   if (
     isCodeSelection &&
@@ -269,7 +318,12 @@ export function SelectionToolbar(props: Props) {
     items = getNoticeMenuItems(state, readOnly, dictionary);
     align = "end";
   } else {
-    items = getFormattingMenuItems(state, isTemplate, dictionary);
+    items = getFormattingMenuItems(
+      state,
+      isTemplate,
+      dictionary,
+      aiFormattingEnabled ? handleAIFormat : undefined
+    );
   }
 
   // Some extensions may be disabled, remove corresponding items
@@ -280,7 +334,7 @@ export function SelectionToolbar(props: Props) {
     if (item.name === "dimensions") {
       return item.visible ?? false;
     }
-    if (item.name && !commands[item.name]) {
+    if (item.name && !commands[item.name] && !item.onClick) {
       return false;
     }
     if (item.visible === false) {
@@ -322,14 +376,42 @@ export function SelectionToolbar(props: Props) {
     <FloatingToolbar
       align={align}
       active={isActive}
+      draggable={activeToolbar === Toolbar.AI}
       ref={menuRef}
       width={
-        activeToolbar === Toolbar.Link || activeToolbar === Toolbar.Media
-          ? 336
-          : undefined
+        activeToolbar === Toolbar.AI
+          ? 640
+          : activeToolbar === Toolbar.Link || activeToolbar === Toolbar.Media
+            ? 336
+            : undefined
       }
     >
-      {activeToolbar === Toolbar.Link ? (
+      {activeToolbar === Toolbar.AI ? (
+        ({ onDragStart }) => (
+          <AITextFormatter
+            key={`ai-${selection.anchor}`}
+            view={view}
+            selectedText={selectedText}
+            selectedMarkdown={selectedMarkdown}
+            isInTableCell={isInTableCellSelection}
+            from={selection.from}
+            to={selection.to}
+            onDragStart={onDragStart}
+            onApply={() => {
+              clearAISelectionDecoration();
+              setActiveToolbar(null);
+            }}
+            onCancel={() => {
+              clearAISelectionDecoration();
+              setActiveToolbar(Toolbar.Menu);
+            }}
+            onClickBack={() => {
+              clearAISelectionDecoration();
+              setActiveToolbar(Toolbar.Menu);
+            }}
+          />
+        )
+      ) : activeToolbar === Toolbar.Link ? (
         <LinkEditor
           key={`link-${selection.anchor}`}
           dictionary={dictionary}

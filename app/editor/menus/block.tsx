@@ -146,6 +146,13 @@ export default function blockMenuItems(
       },
     },
     {
+      name: "dropdown",
+      title: "Dropdown",
+      icon: <DoneIcon />,
+      keywords: "select status chip pill options",
+      appendSpace: true,
+    },
+    {
       name: "blockquote",
       title: dictionary.quote,
       icon: <BlockQuoteIcon />,

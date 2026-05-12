@@ -925,6 +925,11 @@ iframe.embed {
   caret-color: transparent;
 }
 
+.ai-selection-decoration {
+  background: ${transparentize(0.65, props.theme.selected)};
+  border-radius: 2px;
+}
+
 .ProseMirror-selectednode {
   outline: 2px solid
     ${props.readOnly ? "transparent" : props.theme.selected};

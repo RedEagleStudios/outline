@@ -22,10 +22,15 @@ import { isTableSelected } from "@shared/editor/queries/table";
 type Props = {
   align?: "start" | "end" | "center";
   active?: boolean;
-  children: React.ReactNode;
+  children: React.ReactNode | ToolbarRenderChild;
+  draggable?: boolean;
   width?: number;
   forwardedRef?: React.RefObject<HTMLDivElement> | null;
 };
+
+type ToolbarRenderChild = (props: {
+  onDragStart: (event: React.PointerEvent<HTMLElement>) => void;
+}) => React.ReactNode;
 
 const defaultPosition = {
   left: -10000,
@@ -58,7 +63,7 @@ function usePosition({
         setMenuWidth(width);
       }
     }
-  });
+  }, [align, menuRef, menuWidth, selection]);
 
   // based on the start and end of the selection calculate the position at
   // the center top
@@ -245,6 +250,17 @@ const FloatingToolbar = React.forwardRef(function FloatingToolbar_(
 ) {
   const menuRef = ref || React.createRef<HTMLDivElement>();
   const [isSelectingText, setSelectingText] = React.useState(false);
+  const [dragOffset, setDragOffset] = React.useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+  const dragState = React.useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startLeft: number;
+    startTop: number;
+  } | null>(null);
 
   let position = usePosition({
     menuRef,
@@ -266,6 +282,70 @@ const FloatingToolbar = React.forwardRef(function FloatingToolbar_(
     }
   });
 
+  React.useEffect(() => {
+    setDragOffset(null);
+  }, [props.active, props.draggable]);
+
+  const handleDragStart = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      if (!props.draggable || !menuRef.current) {
+        return;
+      }
+
+      const bounds = menuRef.current.getBoundingClientRect();
+      const offsetParent =
+        menuRef.current.offsetParent?.getBoundingClientRect();
+      dragState.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startLeft: bounds.left - (offsetParent?.left ?? 0),
+        startTop: bounds.top - (offsetParent?.top ?? 0),
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    },
+    [menuRef, props.draggable]
+  );
+
+  const handleDragMove = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      const currentDragState = dragState.current;
+      if (!currentDragState || currentDragState.pointerId !== event.pointerId) {
+        return;
+      }
+
+      setDragOffset({
+        left:
+          currentDragState.startLeft + event.clientX - currentDragState.startX,
+        top:
+          currentDragState.startTop + event.clientY - currentDragState.startY,
+      });
+      event.preventDefault();
+    },
+    []
+  );
+
+  const handleDragEnd = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      const currentDragState = dragState.current;
+      if (!currentDragState || currentDragState.pointerId !== event.pointerId) {
+        return;
+      }
+
+      dragState.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    []
+  );
+
+  const children =
+    typeof props.children === "function"
+      ? props.children({ onDragStart: handleDragStart })
+      : props.children;
+
   const isMobile = useMobile();
   const { height } = useWindowSize();
 
@@ -284,9 +364,7 @@ const FloatingToolbar = React.forwardRef(function FloatingToolbar_(
               }px)`,
             }}
           >
-            {props.children && (
-              <MobileBackground>{props.children}</MobileBackground>
-            )}
+            {children && <MobileBackground>{children}</MobileBackground>}
           </MobileWrapper>
         </ReactPortal>
       );
@@ -302,16 +380,17 @@ const FloatingToolbar = React.forwardRef(function FloatingToolbar_(
         arrow={!!props.children && !position.blockSelection}
         ref={menuRef}
         $offset={position.offset}
+        onPointerMove={handleDragMove}
+        onPointerUp={handleDragEnd}
+        onPointerCancel={handleDragEnd}
         style={{
           minWidth: props.width,
           maxWidth: `${position.maxWidth}px`,
-          top: `${position.top}px`,
-          left: `${position.left}px`,
+          top: `${dragOffset?.top ?? position.top}px`,
+          left: `${dragOffset?.left ?? position.left}px`,
         }}
       >
-        {props.children && (
-          <Background align={props.align}>{props.children}</Background>
-        )}
+        {children && <Background align={props.align}>{children}</Background>}
       </Wrapper>
     </Portal>
   );

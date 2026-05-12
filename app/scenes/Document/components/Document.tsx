@@ -140,6 +140,10 @@ function DocumentScene({
 
   const onUndoRedo = useCallback(
     (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+
       if (isModKey(event)) {
         event.preventDefault();
 

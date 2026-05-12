@@ -130,6 +130,7 @@ yarn sequelize migration:create --name=add-field-to-table
 
 ## Documentation
 
+- Always update `docs/FORK-CHANGES.md` when adding, removing, or materially changing fork-local behavior so future sync and AI agents understand why the fork differs from upstream.
 - All public/exported functions & classes must have JSDoc.
 - Include:
   - Description

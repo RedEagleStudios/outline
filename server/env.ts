@@ -789,6 +789,92 @@ export class Environment {
     this.toOptionalString(environment.SEARCH_PROVIDER) ?? "postgres";
 
   /**
+   * Whether AI formatting in the editor is enabled.
+   */
+  @Public
+  @IsBoolean()
+  public AI_FORMATTING_ENABLED = this.toBoolean(
+    environment.AI_FORMATTING_ENABLED ?? "false"
+  );
+
+  /**
+   * The AI formatting provider to use.
+   */
+  @IsOptional()
+  @IsIn(["opencode"])
+  public AI_FORMATTING_PROVIDER = this.toOptionalString(
+    environment.AI_FORMATTING_PROVIDER
+  );
+
+  /**
+   * Maximum selected text length accepted by the AI formatting endpoint.
+   */
+  @IsNumber()
+  public AI_FORMATTING_MAX_INPUT_CHARS =
+    this.toOptionalNumber(environment.AI_FORMATTING_MAX_INPUT_CHARS) ?? 8000;
+
+  /**
+   * Maximum user prompt length accepted by the AI formatting endpoint.
+   */
+  @IsNumber()
+  public AI_FORMATTING_MAX_PROMPT_CHARS =
+    this.toOptionalNumber(environment.AI_FORMATTING_MAX_PROMPT_CHARS) ?? 1000;
+
+  /**
+   * Timeout in milliseconds for AI formatting provider calls.
+   */
+  @IsNumber()
+  public AI_FORMATTING_TIMEOUT =
+    this.toOptionalNumber(environment.AI_FORMATTING_TIMEOUT) ?? 180000;
+
+  /**
+   * OpenCode executable used by the AI formatting provider.
+   */
+  @IsOptional()
+  public OPENCODE_COMMAND =
+    this.toOptionalString(environment.OPENCODE_COMMAND) ?? "opencode";
+
+  /**
+   * Whether to ask OpenCode to print logs to stderr.
+   */
+  @IsBoolean()
+  public OPENCODE_PRINT_LOGS = this.toBoolean(
+    environment.OPENCODE_PRINT_LOGS ?? "false"
+  );
+
+  /**
+   * OpenCode working directory, typically a persistent volume path.
+   */
+  @IsOptional()
+  public OPENCODE_DIR = this.toOptionalString(environment.OPENCODE_DIR);
+
+  /**
+   * OpenCode config directory to pass to the subprocess environment.
+   */
+  @IsOptional()
+  public OPENCODE_CONFIG_DIR = this.toOptionalString(
+    environment.OPENCODE_CONFIG_DIR
+  );
+
+  /**
+   * Optional OpenCode model in provider/model format.
+   */
+  @IsOptional()
+  public OPENCODE_MODEL = this.toOptionalString(environment.OPENCODE_MODEL);
+
+  /**
+   * Optional OpenCode agent name.
+   */
+  @IsOptional()
+  public OPENCODE_AGENT = this.toOptionalString(environment.OPENCODE_AGENT);
+
+  /**
+   * Optional OpenCode server URL to attach to.
+   */
+  @IsOptional()
+  public OPENCODE_ATTACH = this.toOptionalString(environment.OPENCODE_ATTACH);
+
+  /**
    * The product name
    */
   @Public

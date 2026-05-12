@@ -36,6 +36,7 @@ The fork adds an MVP Google Docs-style dropdown chip for documents. Dropdowns ar
 **Files:**
 
 - `app/editor/components/AITextFormatter.tsx`
+- `app/editor/components/FloatingToolbar.tsx`
 - `app/editor/components/SelectionToolbar.tsx`
 - `app/editor/components/ToolbarMenu.tsx`
 - `app/editor/menus/formatting.tsx`
@@ -51,8 +52,9 @@ The fork adds an editor selection helper that lets users select text, enter an i
 
 - Enable with `AI_FORMATTING_ENABLED=true` and `AI_FORMATTING_PROVIDER=opencode`.
 - Configure OpenCode with `OPENCODE_COMMAND`, optional `OPENCODE_DIR`, `OPENCODE_CONFIG_DIR`, `OPENCODE_MODEL`, `OPENCODE_AGENT`, and `OPENCODE_ATTACH`. Set `OPENCODE_DIR` on Railway when the OpenCode working directory should live on a persistent volume.
-- The API route is authenticated and rate-limited, validates prompt and selected text length, and invokes `opencode run` server-side via `execFile`.
-- The editor replaces the original selected range only if the selected text still matches the text submitted to the provider.
+- The API route is authenticated and rate-limited, validates prompt and selected text length, and invokes `opencode run` server-side via `spawn` with ignored stdin to avoid hanging subprocesses.
+- The editor shows a rendered Markdown diff preview with explicit Accept/Decline actions, and replaces the original selected range only if the selected text still matches the text submitted to the provider.
+- The AI formatter popup is draggable from its dotted handle so long previews can be moved away from the selected content.
 
 ### Current Development: Editor Undo Shortcut De-Duplication
 

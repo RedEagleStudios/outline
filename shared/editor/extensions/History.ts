@@ -18,9 +18,18 @@ export default class History extends Extension {
 
   keys(): Record<string, Command | CommandFactory> {
     return {
-      "Mod-z": () => this.editor.commands.undo(),
-      "Mod-y": () => this.editor.commands.redo(),
-      "Shift-Mod-z": () => this.editor.commands.redo(),
+      "Mod-z": () => {
+        this.editor.commands.undo();
+        return true;
+      },
+      "Mod-y": () => {
+        this.editor.commands.redo();
+        return true;
+      },
+      "Shift-Mod-z": () => {
+        this.editor.commands.redo();
+        return true;
+      },
       Backspace: undoInputRule,
     };
   }

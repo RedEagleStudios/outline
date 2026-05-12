@@ -21,6 +21,7 @@ import {
   TableSplitCellsIcon,
   PaletteIcon,
   CollapseIcon,
+  SparklesIcon,
 } from "outline-icons";
 import { v4 as uuidv4 } from "uuid";
 import CellBackgroundColorPicker from "../components/CellBackgroundColorPicker";
@@ -57,7 +58,8 @@ import { DottedCircleIcon } from "~/components/Icons/DottedCircleIcon";
 export default function formattingMenuItems(
   state: EditorState,
   isTemplate: boolean,
-  dictionary: Dictionary
+  dictionary: Dictionary,
+  onAIFormat?: () => void
 ): MenuItem[] {
   const { schema } = state;
   const isCode = isInCode(state);
@@ -94,6 +96,16 @@ export default function formattingMenuItems(
     {
       name: "separator",
       visible: isTemplate && (!isMobile || !isEmpty),
+    },
+    {
+      tooltip: "AI",
+      icon: <SparklesIcon />,
+      visible: !!onAIFormat && !isCodeBlock && !isEmpty && !isTableCell,
+      onClick: onAIFormat,
+    },
+    {
+      name: "separator",
+      visible: !!onAIFormat && !isCodeBlock && !isEmpty && !isTableCell,
     },
     {
       name: "strong",
