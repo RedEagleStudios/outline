@@ -1,5 +1,5 @@
 import { GapCursor } from "prosemirror-gapcursor";
-import type { Node, NodeType } from "prosemirror-model";
+import type { Attrs, Node, NodeType, ResolvedPos } from "prosemirror-model";
 import { Slice } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
@@ -39,9 +39,62 @@ import { type NodeAttrMark, TableLayout } from "../types";
 import { collapseSelection } from "./collapseSelection";
 import { RowSelection } from "../selection/RowSelection";
 import { ColumnSelection } from "../selection/ColumnSelection";
-import type { Attrs } from "prosemirror-model";
 import isUndefined from "lodash/isUndefined";
 import find from "lodash/find";
+
+const textSelectionIndent = "  ";
+
+function getTableCellStart($pos: ResolvedPos): number | undefined {
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    const tableRole = $pos.node(depth).type.spec.tableRole;
+
+    if (tableRole === "cell" || tableRole === "header_cell") {
+      return $pos.before(depth);
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Indents a non-empty text selection inside a single table cell.
+ *
+ * @returns true if selected table text was indented.
+ */
+export const indentSelectedTableText: Command = (state, dispatch) => {
+  const { selection } = state;
+
+  if (!isInTable(state)) {
+    return false;
+  }
+
+  if (!(selection instanceof TextSelection)) {
+    return false;
+  }
+
+  if (selection.empty) {
+    return false;
+  }
+
+  const fromCellStart = getTableCellStart(selection.$from);
+  const toCellStart = getTableCellStart(selection.$to);
+
+  if (fromCellStart === undefined || fromCellStart !== toCellStart) {
+    return false;
+  }
+
+  const tr = state.tr.insertText(textSelectionIndent, selection.from);
+  tr.setSelection(
+    TextSelection.create(
+      tr.doc,
+      selection.from + textSelectionIndent.length,
+      selection.to + textSelectionIndent.length
+    )
+  ).scrollIntoView();
+
+  dispatch?.(tr);
+  return true;
+};
 
 /**
  * Restores column selection after a table operation that may have changed cell
@@ -103,7 +156,7 @@ export function createTableInner(
   const cells: Node[] = [];
   const rows: Node[] = [];
 
-  const createCell = (cellType: NodeType, attrs: Record<string, any> | null) =>
+  const createCell = (cellType: NodeType, attrs: Attrs | null) =>
     cellContent
       ? cellType.createChecked(attrs, cellContent)
       : cellType.createAndFill(attrs);
@@ -916,7 +969,7 @@ export function splitCellAndCollapse(): Command {
  */
 function addRowWithAlignment(
   tr: Transaction,
-  rect: any,
+  rect: ReturnType<typeof selectedRect>,
   index: number,
   copyFromRow: number | undefined,
   state: EditorState

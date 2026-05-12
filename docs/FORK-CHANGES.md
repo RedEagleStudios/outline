@@ -12,6 +12,64 @@ This file also includes the current uncommitted local development/editor fixes t
 
 ## Branch-Level Changes From `main`
 
+### Current Development: Inline Document Dropdowns
+
+**Files:**
+
+- `shared/editor/nodes/Dropdown.tsx`
+- `shared/editor/nodes/index.ts`
+- `app/editor/menus/block.tsx`
+
+**Rationale:**
+
+The fork adds an MVP Google Docs-style dropdown chip for documents. Dropdowns are inline ProseMirror atom nodes with per-node status options, intended to work inside regular text and table cells without adding server-side preset storage yet.
+
+**Implementation Notes:**
+
+- The MVP stores dropdown options directly on each chip node.
+- Slash menu insertion creates a default `Status` dropdown with `Design`, `Open Issue`, `In Progress`, `QA`, `Solved`, `Ignored`, and `Ready To Test` options.
+- Markdown serialization intentionally exports the selected label as plain text; preserve ProseMirror JSON when dropdown attrs must survive API edits or exports.
+- Future shared presets or document-level dropdown definitions should migrate these attrs deliberately rather than assuming upstream compatibility.
+
+### Current Development: OpenCode AI Formatting Helper
+
+**Files:**
+
+- `app/editor/components/AITextFormatter.tsx`
+- `app/editor/components/SelectionToolbar.tsx`
+- `app/editor/components/ToolbarMenu.tsx`
+- `app/editor/menus/formatting.tsx`
+- `server/routes/api/ai/*`
+- `server/services/ai/*`
+- `server/env.ts`
+
+**Rationale:**
+
+The fork adds an editor selection helper that lets users select text, enter an instruction, and ask a server-side OpenCode CLI provider to rewrite only that selected text. This supports Railway deployments by allowing OpenCode working/config directories to point at persistent volume paths.
+
+**Implementation Notes:**
+
+- Enable with `AI_FORMATTING_ENABLED=true` and `AI_FORMATTING_PROVIDER=opencode`.
+- Configure OpenCode with `OPENCODE_COMMAND`, optional `OPENCODE_DIR`, `OPENCODE_CONFIG_DIR`, `OPENCODE_MODEL`, `OPENCODE_AGENT`, and `OPENCODE_ATTACH`. Set `OPENCODE_DIR` on Railway when the OpenCode working directory should live on a persistent volume.
+- The API route is authenticated and rate-limited, validates prompt and selected text length, and invokes `opencode run` server-side via `execFile`.
+- The editor replaces the original selected range only if the selected text still matches the text submitted to the provider.
+
+### Current Development: Editor Undo Shortcut De-Duplication
+
+**Files:**
+
+- `app/scenes/Document/components/Document.tsx`
+- `shared/editor/extensions/History.ts`
+
+**Rationale:**
+
+The fork prevents one `Ctrl/Cmd+Z` keypress from triggering both the ProseMirror history keymap and the document-level global undo shortcut. Without this guard, one undo could create two redo steps and feel unpredictable.
+
+**Implementation Notes:**
+
+- ProseMirror undo/redo key handlers now return `true` after invoking the editor command so the keymap reports the shortcut as handled.
+- The document-level undo/redo shortcut exits when the browser event was already handled by the editor.
+
 ### 1. Railway And Container Compatibility
 
 **Files:**
@@ -128,6 +186,7 @@ The sidebar was refactored to extract reusable row components, improve starred d
 - `shared/editor/nodes/TableHeader.ts`
 - `shared/editor/nodes/TableRow.ts`
 - `shared/editor/nodes/TableView.ts`
+- `shared/editor/commands/table.ts`
 - `shared/editor/plugins/FixTablesPlugin.ts`
 - `shared/editor/plugins/PlaceholderPlugin.ts`
 - `shared/editor/plugins/TableLayoutPlugin.ts`
@@ -144,6 +203,7 @@ The branch reduces unnecessary editor decoration rebuilds and improves table beh
 
 - Preserve helper utilities that detect whether transactions touch table structure or relevant node types.
 - Table decoration optimizations are performance-oriented and should not be removed just because upstream code looks simpler.
+- `Tab` indents a non-empty text selection inside a single table cell before falling back to cell navigation for cursor and cell selections.
 
 ### 7. Webhook Payload Change Inclusion
 
@@ -276,6 +336,8 @@ On Windows, `path.join(rootDir, "plugins/*/server/!(*.test|schema).[jt]s")` prod
 - `shared/editor/lib/listInputRule.ts`
 - `shared/editor/lib/listInputRule.test.ts`
 - `shared/editor/nodes/ListItem.ts`
+- `shared/editor/nodes/ListItem.test.ts`
+- `shared/editor/nodes/CheckboxItem.ts`
 
 **Rationale:**
 
@@ -286,7 +348,10 @@ Typing `- ` inside a table cell should behave like the regular editor and turn t
 - Keep the existing default wrapping rule outside table cells.
 - Inside table cells and header cells, use a line-aware fallback that converts only the current hard-break-delimited line into a list.
 - Preserve text before and after the current line as separate paragraphs in the same cell.
-- Add a table-list-specific Backspace handler so undoing an empty list marker in a table cell restores `- ` or `1. ` and keeps the cursor after the marker.
+- Add a table-list-specific Backspace handler so undoing an empty bullet list marker in a table cell restores `- ` and keeps the cursor after the marker.
+- Empty ordered-list items use Backspace to reduce nesting; at the root list level they become regular paragraphs.
+- Empty list items with nested child lists use Backspace to remove the empty parent and promote child items up one level.
+- `Tab`, `Shift-Tab`, `Mod-]`, and `Mod-[` apply list nesting changes to every list item touched by a non-empty text selection instead of only the first selected item.
 
 ## Verification Used For Current Uncommitted Changes
 

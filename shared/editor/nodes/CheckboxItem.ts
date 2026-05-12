@@ -4,15 +4,12 @@ import type {
   Node as ProsemirrorNode,
   NodeType,
 } from "prosemirror-model";
-import {
-  splitListItem,
-  sinkListItem,
-  liftListItem,
-} from "prosemirror-schema-list";
+import { splitListItem } from "prosemirror-schema-list";
 import { v4 as uuidv4 } from "uuid";
 import { toggleCheckboxItems } from "../commands/toggleCheckboxItems";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
 import checkboxRule from "../rules/checkboxes";
+import { indentSelectedListItems, outdentSelectedListItems } from "./ListItem";
 import Node from "./Node";
 
 export default class CheckboxItem extends Node {
@@ -97,8 +94,8 @@ export default class CheckboxItem extends Node {
 
   commands({ type }: { type: NodeType }) {
     return {
-      indentCheckboxList: () => sinkListItem(type),
-      outdentCheckboxList: () => liftListItem(type),
+      indentCheckboxList: () => indentSelectedListItems(type),
+      outdentCheckboxList: () => outdentSelectedListItems(type),
     };
   }
 
@@ -107,11 +104,11 @@ export default class CheckboxItem extends Node {
       Enter: splitListItem(type, {
         checked: false,
       }),
-      Tab: sinkListItem(type),
+      Tab: indentSelectedListItems(type),
       "Mod-Enter": toggleCheckboxItems(type),
-      "Shift-Tab": liftListItem(type),
-      "Mod-]": sinkListItem(type),
-      "Mod-[": liftListItem(type),
+      "Shift-Tab": outdentSelectedListItems(type),
+      "Mod-]": indentSelectedListItems(type),
+      "Mod-[": outdentSelectedListItems(type),
     };
   }
 

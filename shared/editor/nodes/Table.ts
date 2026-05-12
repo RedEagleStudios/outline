@@ -39,6 +39,7 @@ import {
   toggleCellSelectionBackgroundAndCollapseSelection,
   toggleRowBackgroundAndCollapseSelection,
   toggleColumnBackgroundAndCollapseSelection,
+  indentSelectedTableText,
 } from "../commands/table";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
 import { FixTablesPlugin } from "../plugins/FixTablesPlugin";
@@ -117,7 +118,11 @@ export default class Table extends Node {
 
   keys() {
     return {
-      Tab: chainCommands(goToNextCell(1), addRowAndMoveSelection()),
+      Tab: chainCommands(
+        indentSelectedTableText,
+        goToNextCell(1),
+        addRowAndMoveSelection()
+      ),
       "Shift-Tab": goToNextCell(-1),
       "Mod-Enter": addRowAndMoveSelection(),
       "Mod-Backspace": chainCommands(
