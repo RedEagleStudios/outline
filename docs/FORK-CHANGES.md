@@ -8,7 +8,7 @@ This document records intentional fork-local changes so future sync or AI agents
 
 Compared branch: `re-main` against `main`.
 
-This file also includes the current uncommitted local development/editor fixes that are not yet part of `HEAD`.
+This file also records notable branch-level and fork-local development changes that may overlap with upstream during sync.
 
 ## Branch-Level Changes From `main`
 
@@ -17,19 +17,29 @@ This file also includes the current uncommitted local development/editor fixes t
 **Files:**
 
 - `shared/editor/nodes/Dropdown.tsx`
+- `shared/editor/nodes/DropdownDefinition.ts`
+- `shared/editor/lib/dropdowns.ts`
 - `shared/editor/nodes/index.ts`
+- `app/editor/components/BlockMenu.tsx`
 - `app/editor/menus/block.tsx`
+- `server/models/DropdownTemplate.ts`
+- `server/routes/api/dropdownTemplates/*`
+- `server/presenters/dropdownTemplate.ts`
+- `server/policies/dropdownTemplate.ts`
+- `server/migrations/20260515000000-create-dropdown-templates.js`
 
 **Rationale:**
 
-The fork adds an MVP Google Docs-style dropdown chip for documents. Dropdowns are inline ProseMirror atom nodes with per-node status options, intended to work inside regular text and table cells without adding server-side preset storage yet.
+The fork adds an MVP Google Docs-style dropdown chip for documents. Dropdowns are inline ProseMirror atom nodes that reference hidden document-level definition nodes, so no database migration is required.
 
 **Implementation Notes:**
 
-- The MVP stores dropdown options directly on each chip node.
-- Slash menu insertion creates a default `Status` dropdown with `Design`, `Open Issue`, `In Progress`, `QA`, `Solved`, `Ignored`, and `Ready To Test` options.
-- Markdown serialization intentionally exports the selected label as plain text; preserve ProseMirror JSON when dropdown attrs must survive API edits or exports.
-- Future shared presets or document-level dropdown definitions should migrate these attrs deliberately rather than assuming upstream compatibility.
+- The default `Status` dropdown contains `Design`, `Open Issue`, `In Progress`, `QA`, `Solved`, `Ignored`, and `Ready To Test` options.
+- Dropdown definitions are stored in hidden `dropdown_definition` nodes; chips store `dropdownId` and `selectedOptionId`.
+- The slash menu exposes existing document and workspace dropdown types under `Dropdown` and includes a `New workspace dropdown...` creation flow with optional `Label=#RRGGBB` option colors.
+- Workspace dropdown templates are stored per team and copied into documents when inserted so document Markdown remains portable.
+- Markdown serialization writes definitions as `<!-- outline-dropdown {...} -->` comments and chips as `{dropdown:status|open}`.
+- Legacy MVP chips with per-node `options` attrs remain readable as a fallback during transition.
 
 ### Current Development: OpenCode AI Formatting Helper
 
@@ -297,7 +307,7 @@ The branch includes refactors converting large components to modern functional p
 - `withStores.tsx` deletion is intentional.
 - `WebsocketProvider` and `Document` refactors should be treated as structural changes rather than superficial formatting.
 
-## Current Uncommitted Local Changes
+## Additional Branch-Level Changes
 
 ### 12. Windows-Compatible Backend Build Cleanup And Copies
 
@@ -355,7 +365,7 @@ Typing `- ` inside a table cell should behave like the regular editor and turn t
 - Empty list items with nested child lists use Backspace to remove the empty parent and promote child items up one level.
 - `Tab`, `Shift-Tab`, `Mod-]`, and `Mod-[` apply list nesting changes to every list item touched by a non-empty text selection instead of only the first selected item.
 
-## Verification Used For Current Uncommitted Changes
+## Verification Used For List Input Rule Changes
 
 - `yarn test shared/editor/lib/listInputRule.test.ts`
 - `oxlint --type-aware shared/editor/lib/listInputRule.ts shared/editor/lib/listInputRule.test.ts`

@@ -6,6 +6,7 @@ import presentCollection from "./collection";
 import presentComment from "./comment";
 import presentDocument, { presentDocuments } from "./document";
 import presentDocumentInsight from "./documentInsight";
+import presentDropdownTemplate from "./dropdownTemplate";
 import presentEvent from "./event";
 import presentExternalGroup from "./externalGroup";
 import presentFileOperation from "./fileOperation";
@@ -44,6 +45,7 @@ export {
   presentDocument,
   presentDocuments,
   presentDocumentInsight,
+  presentDropdownTemplate,
   presentEvent,
   presentExternalGroup,
   presentFileOperation,

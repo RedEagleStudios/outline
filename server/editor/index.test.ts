@@ -145,3 +145,58 @@ test("serializes uppercase alpha lists back to markdown", () => {
 
   expect(output.trim()).toBe("A. First item\nB. Second item");
 });
+
+test("parses document dropdown markdown", () => {
+  const ast = parser.parse(
+    '<!-- outline-dropdown {"id":"status","name":"Status","options":[{"id":"open","label":"Open Issue","color":"#BA1A1A"}]} -->\n\n{dropdown:status|open}'
+  );
+  const json = ast?.toJSON();
+
+  expect(json?.content).toEqual([
+    {
+      content: [
+        {
+          attrs: {
+            dropdownId: "status",
+            id: expect.any(String),
+            name: "Status",
+            options: [
+              {
+                color: "#BA1A1A",
+                id: "open",
+                label: "Open Issue",
+              },
+            ],
+            selectedOptionId: "open",
+          },
+          type: "dropdown",
+        },
+      ],
+      type: "paragraph",
+    },
+    {
+      attrs: {
+        id: "status",
+        name: "Status",
+        options: [
+          {
+            color: "#BA1A1A",
+            id: "open",
+            label: "Open Issue",
+          },
+        ],
+      },
+      type: "dropdown_definition",
+    },
+  ]);
+});
+
+test("serializes document dropdown markdown", () => {
+  const ast = parser.parse(
+    '<!-- outline-dropdown {"id":"status","name":"Status","options":[{"id":"open","label":"Open Issue","color":"#BA1A1A"}]} -->\n\n{dropdown:status|open}'
+  );
+
+  expect(serializer.serialize(ast).trim()).toBe(
+    '<!-- outline-dropdown {"id":"status","name":"Status","options":[{"id":"open","label":"Open Issue","color":"#BA1A1A"}]} -->\n\n{dropdown:status|open}'
+  );
+});

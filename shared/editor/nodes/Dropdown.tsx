@@ -1,3 +1,4 @@
+import type { Token } from "markdown-it";
 import type {
   Node as ProsemirrorNode,
   NodeSpec,
@@ -6,129 +7,82 @@ import type {
 import type { Command } from "prosemirror-state";
 import { Plugin, TextSelection } from "prosemirror-state";
 import * as React from "react";
+import * as ReactDOM from "react-dom";
 import styled from "styled-components";
 import { v4 as uuidv4 } from "uuid";
 import { s } from "../../styles";
+import {
+  defaultDropdownDefinition,
+  dropdownMarkdownRule,
+  getDropdownDefinitions,
+  getDropdownDefinition,
+  getDocumentDropdownDefinitions,
+  getSelectedDropdownOption,
+} from "../lib/dropdowns";
+import type {
+  DropdownAttrs,
+  DropdownDefinition,
+  DropdownOption,
+} from "../lib/dropdowns";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
 import type { ComponentProps } from "../types";
 import Node from "./Node";
 
-interface DropdownOption {
-  id: string;
-  label: string;
-  color: string;
-}
-
-interface DropdownAttrs {
-  id: string;
-  name: string;
-  selectedOptionId: string;
-  options: DropdownOption[];
-}
-
-const defaultOptions: DropdownOption[] = [
-  {
-    id: "design",
-    label: "Design",
-    color: "#9E77ED",
-  },
-  {
-    id: "open",
-    label: "Open Issue",
-    color: "#BA1A1A",
-  },
-  {
-    id: "progress",
-    label: "In Progress",
-    color: "#D9793D",
-  },
-  {
-    id: "qa",
-    label: "QA",
-    color: "#276678",
-  },
-  {
-    id: "solved",
-    label: "Solved",
-    color: "#17834F",
-  },
-  {
-    id: "ignored",
-    label: "Ignored",
-    color: "#6B7280",
-  },
-  {
-    id: "ready-to-test",
-    label: "Ready To Test",
-    color: "#4F46E5",
-  },
-];
-
 function getDefaultAttrs(): DropdownAttrs {
   return {
     id: uuidv4(),
-    name: "Status",
-    selectedOptionId: defaultOptions[0].id,
-    options: defaultOptions,
+    dropdownId: defaultDropdownDefinition.id,
+    selectedOptionId: defaultDropdownDefinition.options[0].id,
   };
-}
-
-function getOptions(value: unknown): DropdownOption[] {
-  if (!Array.isArray(value)) {
-    return defaultOptions;
-  }
-
-  const options = value.filter(
-    (option): option is DropdownOption =>
-      typeof option?.id === "string" &&
-      typeof option.label === "string" &&
-      typeof option.color === "string"
-  );
-
-  return options.length ? options : defaultOptions;
-}
-
-function parseOptions(value: string | undefined): DropdownOption[] {
-  if (!value) {
-    return defaultOptions;
-  }
-
-  try {
-    return getOptions(JSON.parse(value));
-  } catch (_err) {
-    return defaultOptions;
-  }
-}
-
-function getSelectedOption(attrs: Partial<DropdownAttrs>) {
-  const options = getOptions(attrs.options);
-  return (
-    options.find((option) => option.id === attrs.selectedOptionId) ?? options[0]
-  );
 }
 
 function DropdownComponent({ node, view, getPos, isEditable }: ComponentProps) {
   const [open, setOpen] = React.useState(false);
+  const [menuRect, setMenuRect] = React.useState<DOMRect>();
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
-  const name = typeof node.attrs.name === "string" ? node.attrs.name : "Status";
-  const options = getOptions(node.attrs.options);
-  const selectedOption = getSelectedOption(node.attrs);
+  const menuRef = React.useRef<HTMLSpanElement>(null);
+  const definition = getDropdownDefinition(view.state.doc, node.attrs);
+  const selectedOption = getSelectedDropdownOption(
+    definition,
+    node.attrs.selectedOptionId
+  );
 
   React.useEffect(() => {
     if (!open) {
       return;
     }
 
+    const updateMenuRect = () => {
+      const rect = wrapperRef.current?.getBoundingClientRect();
+
+      if (rect) {
+        setMenuRect(rect);
+      }
+    };
+
     const handlePointerDown = (event: PointerEvent) => {
-      if (wrapperRef.current?.contains(event.target as HTMLElement)) {
+      const target = event.target as HTMLElement;
+
+      if (
+        wrapperRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) {
         return;
       }
 
       setOpen(false);
     };
 
+    updateMenuRect();
     document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("scroll", updateMenuRect, true);
+    window.addEventListener("resize", updateMenuRect);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("scroll", updateMenuRect, true);
+      window.removeEventListener("resize", updateMenuRect);
+    };
   }, [open]);
 
   const handleToggle = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -168,29 +122,38 @@ function DropdownComponent({ node, view, getPos, isEditable }: ComponentProps) {
         {selectedOption.label}
         {isEditable && <Caret aria-hidden>▾</Caret>}
       </Chip>
-      {open && (
-        <Menu role="menu" aria-label={name}>
-          <MenuHeader>{name}</MenuHeader>
-          {options.map((option) => (
-            <MenuItem
-              key={option.id}
-              type="button"
-              role="menuitemradio"
-              aria-checked={option.id === selectedOption.id}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => handleSelect(option)}
-            >
-              <OptionPill $color={option.color}>{option.label}</OptionPill>
-            </MenuItem>
-          ))}
-        </Menu>
-      )}
+      {open &&
+        menuRect &&
+        ReactDOM.createPortal(
+          <Menu
+            ref={menuRef}
+            role="menu"
+            aria-label={definition.name}
+            $top={menuRect.bottom + 4}
+            $left={menuRect.left}
+          >
+            <MenuHeader>{definition.name}</MenuHeader>
+            {definition.options.map((option) => (
+              <MenuItem
+                key={option.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={option.id === selectedOption.id}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => handleSelect(option)}
+              >
+                <OptionPill $color={option.color}>{option.label}</OptionPill>
+              </MenuItem>
+            ))}
+          </Menu>,
+          document.body
+        )}
     </Wrapper>
   );
 }
 
 /**
- * Inline document dropdown chip with per-node options.
+ * Inline document dropdown chip backed by document-level definitions.
  */
 export default class Dropdown extends Node {
   get name() {
@@ -203,16 +166,20 @@ export default class Dropdown extends Node {
         id: {
           default: undefined,
         },
-        name: {
-          default: "Status",
+        dropdownId: {
+          default: defaultDropdownDefinition.id,
           validate: "string",
         },
         selectedOptionId: {
-          default: defaultOptions[0].id,
+          default: defaultDropdownDefinition.options[0].id,
           validate: "string",
         },
+        // Legacy MVP attrs are preserved so existing chips can be read and migrated.
+        name: {
+          default: undefined,
+        },
         options: {
-          default: defaultOptions,
+          default: undefined,
         },
       },
       inline: true,
@@ -226,33 +193,57 @@ export default class Dropdown extends Node {
           preserveWhitespace: "full",
           getAttrs: (dom: HTMLElement) => ({
             id: dom.dataset.id,
-            name: dom.dataset.name ?? "Status",
+            dropdownId: dom.dataset.dropdownId ?? defaultDropdownDefinition.id,
             selectedOptionId:
-              dom.dataset.selectedOptionId ?? defaultOptions[0].id,
-            options: parseOptions(dom.dataset.options),
+              dom.dataset.selectedOptionId ??
+              defaultDropdownDefinition.options[0].id,
           }),
         },
       ],
       toDOM: (node) => {
-        const selectedOption = getSelectedOption(node.attrs);
+        const definition = getDropdownDefinition(
+          node.type.schema.node("doc", undefined, [
+            node.type.schema.node("paragraph"),
+          ]),
+          node.attrs
+        );
+        const selectedOption = getSelectedDropdownOption(
+          definition,
+          node.attrs.selectedOptionId
+        );
 
         return [
           "span",
           {
             class: this.name,
             "data-id": node.attrs.id,
-            "data-name": node.attrs.name,
+            "data-dropdown-id": node.attrs.dropdownId,
             "data-selected-option-id": node.attrs.selectedOptionId,
-            "data-options": JSON.stringify(getOptions(node.attrs.options)),
           },
           selectedOption.label,
         ];
       },
-      leafText: (node) => getSelectedOption(node.attrs).label,
+      leafText: (node) => {
+        const definition = getDropdownDefinition(
+          node.type.schema.node("doc", undefined, [
+            node.type.schema.node("paragraph"),
+          ]),
+          node.attrs
+        );
+
+        return getSelectedDropdownOption(
+          definition,
+          node.attrs.selectedOptionId
+        ).label;
+      },
     };
   }
 
   component = DropdownComponent;
+
+  get rulePlugins() {
+    return [dropdownMarkdownRule];
+  }
 
   get plugins() {
     return [
@@ -265,6 +256,15 @@ export default class Dropdown extends Node {
           tr.doc.descendants((node, pos) => {
             if (node.type.name !== this.name) {
               return;
+            }
+
+            if (!node.attrs.dropdownId && node.attrs.options) {
+              modified = true;
+              tr.setNodeAttribute(
+                pos,
+                "dropdownId",
+                defaultDropdownDefinition.id
+              );
             }
 
             const nodeId = node.attrs.id;
@@ -286,25 +286,55 @@ export default class Dropdown extends Node {
   }
 
   commands({ type }: { type: NodeType }) {
-    return (attrs: Partial<DropdownAttrs> = {}): Command =>
+    return (
+        attrs: Partial<DropdownAttrs> & {
+          definition?: DropdownDefinition;
+        } = {}
+      ): Command =>
       (state, dispatch) => {
         const { selection } = state;
         const position = selection.from;
 
         const defaultAttrs = getDefaultAttrs();
-        const options = getOptions(attrs.options ?? defaultAttrs.options);
+        const definitions = getDocumentDropdownDefinitions(state.doc);
+        const definition = attrs.definition
+          ? getDropdownDefinitions([attrs.definition])[0]
+          : undefined;
+        const dropdownId =
+          definition?.id ?? attrs.dropdownId ?? defaultAttrs.dropdownId;
+        const dropdownDefinition =
+          definitions.find((candidate) => candidate.id === dropdownId) ??
+          definition ??
+          defaultDropdownDefinition;
         const selectedOption =
-          options.find((option) => option.id === attrs.selectedOptionId) ??
-          options[0];
+          dropdownDefinition.options.find(
+            (option) => option.id === attrs.selectedOptionId
+          ) ?? dropdownDefinition.options[0];
         const node = type.create({
           ...defaultAttrs,
           ...attrs,
           id: attrs.id ?? defaultAttrs.id,
-          options,
+          dropdownId: dropdownDefinition.id,
           selectedOptionId: selectedOption.id,
+          name: dropdownDefinition.name,
+          options: dropdownDefinition.options,
         });
 
         const transaction = state.tr.replaceSelectionWith(node);
+        const hasDefinition = definitions.some(
+          (candidate) => candidate.id === dropdownDefinition.id
+        );
+
+        if (!hasDefinition) {
+          const definitionType = state.schema.nodes.dropdown_definition;
+          if (definitionType) {
+            transaction.insert(
+              transaction.doc.content.size,
+              definitionType.create(dropdownDefinition)
+            );
+          }
+        }
+
         dispatch?.(
           transaction.setSelection(
             TextSelection.near(
@@ -317,13 +347,27 @@ export default class Dropdown extends Node {
   }
 
   toMarkdown(state: MarkdownSerializerState, node: ProsemirrorNode) {
-    state.write(getSelectedOption(node.attrs).label);
+    state.write(
+      `{dropdown:${node.attrs.dropdownId}|${node.attrs.selectedOptionId}}`
+    );
+  }
+
+  parseMarkdown() {
+    return {
+      node: "dropdown",
+      getAttrs: (token: Token) => ({
+        id: uuidv4(),
+        dropdownId: token.attrGet("dropdownId") ?? defaultDropdownDefinition.id,
+        selectedOptionId:
+          token.attrGet("selectedOptionId") ??
+          defaultDropdownDefinition.options[0].id,
+      }),
+    };
   }
 }
 
 const Wrapper = styled.span`
   display: inline-flex;
-  position: relative;
   vertical-align: baseline;
 `;
 
@@ -355,18 +399,18 @@ const Caret = styled.span`
   opacity: 0.85;
 `;
 
-const Menu = styled.span`
+const Menu = styled.span<{ $top: number; $left: number }>`
   background: ${s("menuBackground")};
   border-radius: 6px;
   box-shadow: ${s("menuShadow")};
   display: grid;
   gap: 3px;
-  left: 0;
+  left: ${({ $left }) => `${$left}px`};
   min-width: 180px;
   padding: 8px;
-  position: absolute;
-  top: calc(100% + 4px);
-  z-index: 400;
+  position: fixed;
+  top: ${({ $top }) => `${$top}px`};
+  z-index: 1000;
 `;
 
 const MenuHeader = styled.span`

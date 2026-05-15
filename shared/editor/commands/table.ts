@@ -1,6 +1,6 @@
 import { GapCursor } from "prosemirror-gapcursor";
 import type { Attrs, Node, NodeType, ResolvedPos } from "prosemirror-model";
-import { Slice } from "prosemirror-model";
+import { Fragment, Slice } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
 import {
@@ -976,6 +976,7 @@ function addRowWithAlignment(
 ): Transaction {
   // Get alignment attributes from the source row BEFORE inserting the new row
   let sourceRowAlignments: (string | null)[] | undefined;
+  let sourceRowDropdowns: Node[][] | undefined;
 
   if (
     copyFromRow !== undefined &&
@@ -988,6 +989,10 @@ function addRowWithAlignment(
         const node = tr.doc.nodeAt(pos);
         return node?.attrs.alignment || null;
       });
+      sourceRowDropdowns = cellsInSourceRow.map((pos) => {
+        const node = tr.doc.nodeAt(pos);
+        return node ? getDropdownNodes(node) : [];
+      });
     }
   }
 
@@ -995,7 +1000,7 @@ function addRowWithAlignment(
   const newTr = addRow(tr, rect, index);
 
   // Apply the copied alignments to the new row
-  if (sourceRowAlignments) {
+  if (sourceRowAlignments || sourceRowDropdowns) {
     const newState = state.apply(newTr);
     const cellsInNewRow = getCellsInRow(index)(newState);
 
@@ -1014,11 +1019,55 @@ function addRowWithAlignment(
             newTr.setNodeMarkup(newCellPos, undefined, attrs);
           }
         }
+
+        const dropdowns = sourceRowDropdowns?.[colIndex];
+        if (dropdowns?.length) {
+          const newCellNode = newTr.doc.nodeAt(newCellPos);
+
+          if (newCellNode) {
+            newTr.replaceWith(
+              newCellPos + 1,
+              newCellPos + newCellNode.nodeSize - 1,
+              createDropdownParagraph(state, dropdowns)
+            );
+          }
+        }
       });
     }
   }
 
   return newTr;
+}
+
+function getDropdownNodes(cell: Node) {
+  const dropdowns: Node[] = [];
+
+  cell.descendants((node) => {
+    if (node.type.name === "dropdown") {
+      dropdowns.push(
+        node.type.create({
+          ...node.attrs,
+          id: undefined,
+        })
+      );
+    }
+  });
+
+  return dropdowns;
+}
+
+function createDropdownParagraph(state: EditorState, dropdowns: Node[]) {
+  const content: Node[] = [];
+
+  dropdowns.forEach((dropdown, index) => {
+    if (index > 0) {
+      content.push(state.schema.text(" "));
+    }
+
+    content.push(dropdown);
+  });
+
+  return state.schema.nodes.paragraph.create(null, Fragment.fromArray(content));
 }
 
 /**

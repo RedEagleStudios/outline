@@ -4,12 +4,18 @@ import { keymap } from "prosemirror-keymap";
 import { MarkdownParser } from "prosemirror-markdown";
 import type { MarkSpec, NodeSpec, Schema } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
+import type { FunctionComponent } from "react";
 import type { Primitive } from "utility-types";
 import type { Editor } from "~/editor";
 import type Mark from "../marks/Mark";
 import type Node from "../nodes/Node";
-import type { CommandFactory } from "./Extension";
+import type { CommandFactory, WidgetProps } from "./Extension";
 import type Extension from "./Extension";
+import {
+  appendDropdownDefinitionNodes,
+  extractDropdownDefinitions,
+  hydrateDropdownNodes,
+} from "./dropdowns";
 import makeRules from "./markdown/rules";
 import { MarkdownSerializer } from "./markdown/serializer";
 
@@ -67,7 +73,7 @@ export default class ExtensionManager {
       .reduce(
         (memo, node: Node) => ({
           ...memo,
-          [node.name]: observer(node.widget as any),
+          [node.name]: observer(node.widget as FunctionComponent<WidgetProps>),
         }),
         {}
       );
@@ -174,11 +180,31 @@ export default class ExtensionManager {
         };
       }, {});
 
-    return new MarkdownParser(
+    const parser = new MarkdownParser(
       schema,
       makeRules({ rules, schema, plugins }),
       tokens
     );
+    const parse = parser.parse.bind(parser);
+
+    parser.parse = (text: string) => {
+      const { markdown, dropdowns } = extractDropdownDefinitions(text);
+      const doc = parse(markdown);
+
+      if (!doc || !dropdowns.length) {
+        return doc;
+      }
+
+      return hydrateDropdownNodes(
+        doc.type.create(
+          doc.attrs,
+          appendDropdownDefinitionNodes(doc, doc.content, dropdowns),
+          doc.marks
+        )
+      );
+    };
+
+    return parser;
   }
 
   get plugins() {

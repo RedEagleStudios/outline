@@ -25,3 +25,4 @@ data/*
 !.yarn/sdks
 .env.development.local
 .claude/
+.serena

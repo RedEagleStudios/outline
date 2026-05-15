@@ -8,6 +8,7 @@ import "./authenticationProvider";
 import "./collection";
 import "./comment";
 import "./document";
+import "./dropdownTemplate";
 import "./externalGroup";
 import "./fileOperation";
 import "./import";

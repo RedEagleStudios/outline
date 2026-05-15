@@ -23,6 +23,7 @@ import CodeBlock from "./CodeBlock";
 import CodeFence from "./CodeFence";
 import Doc from "./Doc";
 import Dropdown from "./Dropdown";
+import DropdownDefinition from "./DropdownDefinition";
 import Embed from "./Embed";
 import Emoji from "./Emoji";
 import HardBreak from "./HardBreak";
@@ -114,6 +115,7 @@ export const richExtensions: Nodes = [
   HorizontalRule,
   Highlight,
   TemplatePlaceholder,
+  DropdownDefinition,
   Math,
   MathBlock,
   Dropdown,

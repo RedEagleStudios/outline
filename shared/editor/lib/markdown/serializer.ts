@@ -3,6 +3,11 @@
 // https://raw.githubusercontent.com/ProseMirror/prosemirror-markdown/master/src/to_markdown.js
 // forked for table support
 
+import {
+  getSerializableDropdownDefinitions,
+  serializeDropdownDefinitions,
+} from "../dropdowns";
+
 type Options = { tightLists?: boolean; softBreak?: boolean };
 
 // ::- A specification for serializing a ProseMirror document as
@@ -54,6 +59,7 @@ export class MarkdownSerializer {
   // [CommonMark](http://commonmark.org/).
   serialize(content, options?: Options): string {
     const state = new MarkdownSerializerState(this.nodes, this.marks, options);
+    state.renderDropdownDefinitions(content);
     state.renderContent(content);
     return state.out;
   }
@@ -67,6 +73,7 @@ export class MarkdownSerializer {
   ): { markdown: string; blockMap: BlockMapEntry[] } {
     const state = new MarkdownSerializerState(this.nodes, this.marks, options);
     state.blockMap = [];
+    state.renderDropdownDefinitions(content);
     state.renderContent(content);
     return { markdown: state.out, blockMap: state.blockMap };
   }
@@ -230,6 +237,21 @@ export class MarkdownSerializerState {
         });
       }
     });
+  }
+
+  renderDropdownDefinitions(content) {
+    if (content.type?.name !== "doc") {
+      return;
+    }
+
+    const definitions = serializeDropdownDefinitions(
+      getSerializableDropdownDefinitions(content)
+    );
+    if (!definitions) {
+      return;
+    }
+
+    this.write(`${definitions}\n\n`);
   }
 
   // :: (Node)
