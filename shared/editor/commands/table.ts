@@ -1007,6 +1007,7 @@ function addRowWithAlignment(
     if (cellsInNewRow) {
       cellsInNewRow.forEach((newCellPos, colIndex) => {
         if (
+          sourceRowAlignments &&
           colIndex < sourceRowAlignments.length &&
           sourceRowAlignments[colIndex]
         ) {

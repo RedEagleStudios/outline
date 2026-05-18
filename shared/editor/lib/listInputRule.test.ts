@@ -27,7 +27,7 @@ describe("listWrappingInputRule", () => {
     const rule = listWrappingInputRule(
       /^\s*([-+*])\s$/,
       schema.nodes.bullet_list
-    ) as InputRuleWithHandler;
+    ) as ReturnType<typeof listWrappingInputRule> & InputRuleWithHandler;
 
     const transaction = rule.handler(
       state,
@@ -53,9 +53,7 @@ describe("listWrappingInputRule", () => {
       schema.nodes.br.create(),
       schema.text("after"),
     ]);
-    const testDoc = doc(
-      table([tr([schema.nodes.td.create(null, paragraph)])])
-    );
+    const testDoc = doc(table([tr([schema.nodes.td.create(null, paragraph)])]));
     let triggerPosition = 0;
     testDoc.descendants((node, pos) => {
       if (node.isText && node.text === "-") {
@@ -66,7 +64,7 @@ describe("listWrappingInputRule", () => {
     const rule = listWrappingInputRule(
       /^\s*([-+*])\s$/,
       schema.nodes.bullet_list
-    ) as InputRuleWithHandler;
+    ) as ReturnType<typeof listWrappingInputRule> & InputRuleWithHandler;
 
     const transaction = rule.handler(
       state,
@@ -98,7 +96,7 @@ describe("listWrappingInputRule", () => {
     const rule = listWrappingInputRule(
       /^\s*([-+*])\s$/,
       schema.nodes.bullet_list
-    ) as InputRuleWithHandler;
+    ) as ReturnType<typeof listWrappingInputRule> & InputRuleWithHandler;
 
     const transaction = rule.handler(
       state,
@@ -110,7 +108,11 @@ describe("listWrappingInputRule", () => {
     expect(transaction).not.toBeNull();
 
     const nextState = state.apply(transaction!);
-    const listItem = nextState.doc.firstChild!.child(0).child(0).child(0).child(0);
+    const listItem = nextState.doc
+      .firstChild!.child(0)
+      .child(0)
+      .child(0)
+      .child(0);
 
     expect(listItem.textContent).toBe("test");
     expect(nextState.selection.empty).toBe(true);

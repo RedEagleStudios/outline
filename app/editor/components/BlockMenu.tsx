@@ -1,4 +1,4 @@
-import { DocumentIcon, PlusIcon, ShapesIcon } from "outline-icons";
+import { DocumentIcon, EditIcon, PlusIcon, ShapesIcon } from "outline-icons";
 import cloneDeep from "lodash/cloneDeep";
 import { observer } from "mobx-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -174,7 +174,7 @@ function BlockMenu(props: Props) {
             })),
           ];
 
-          return [
+          const items: MenuItem[] = [
             ...definitions.map(({ definition, title }) => ({
               name: "noop",
               title,
@@ -228,6 +228,51 @@ function BlockMenu(props: Props) {
               },
             },
           ];
+
+          if (workspaceDropdownTemplates.length) {
+            items.push(
+              { name: "separator" },
+              ...workspaceDropdownTemplates.map((template) => ({
+                name: "noop",
+                title: `Edit ${template.name}...`,
+                icon: <EditIcon />,
+                keywords: `${template.name} edit dropdown rename options workspace`,
+                disabled: !user?.isAdmin,
+                onClick: async () => {
+                  const definition = promptForDropdownDefinition(
+                    [...documentDefinitions, ...workspaceDropdownTemplates],
+                    template
+                  );
+
+                  if (!definition) {
+                    return;
+                  }
+
+                  const response = await client.post(
+                    "/dropdownTemplates.update",
+                    {
+                      id: template.id,
+                      name: definition.name,
+                      options: getSerializableDropdownOptions(definition),
+                    }
+                  );
+                  const workspaceDefinition = response.data;
+
+                  setWorkspaceDropdownTemplates((templates) =>
+                    sortDropdownDefinitions(
+                      templates.map((existingTemplate) =>
+                        existingTemplate.id === workspaceDefinition.id
+                          ? workspaceDefinition
+                          : existingTemplate
+                      )
+                    )
+                  );
+                },
+              }))
+            );
+          }
+
+          return items;
         },
       }) satisfies MenuItem,
     [editor, user?.isAdmin, workspaceDropdownTemplates]
@@ -283,9 +328,12 @@ function getDropdownMenuDefinitions(definitions: DropdownDefinition[]) {
 }
 
 function promptForDropdownDefinition(
-  existingDefinitions: DropdownDefinition[]
+  existingDefinitions: DropdownDefinition[],
+  existingDefinition?: DropdownDefinition
 ): DropdownDefinition | undefined {
-  const name = window.prompt("Dropdown name", "Status")?.trim();
+  const name = window
+    .prompt("Dropdown name", existingDefinition?.name ?? "Status")
+    ?.trim();
 
   if (!name) {
     return undefined;
@@ -294,7 +342,9 @@ function promptForDropdownDefinition(
   const optionsValue = window
     .prompt(
       "Options, separated by commas. Add colors with Label=#RRGGBB",
-      "Design=#9E77ED, Open Issue=#BA1A1A, In Progress=#D9793D, QA=#276678, Solved=#17834F"
+      existingDefinition
+        ? formatDropdownOptions(existingDefinition)
+        : "Design=#9E77ED, Open Issue=#BA1A1A, In Progress=#D9793D, QA=#276678, Solved=#17834F"
     )
     ?.trim();
 
@@ -312,19 +362,27 @@ function promptForDropdownDefinition(
   }
 
   const existingIds = new Set(
-    existingDefinitions.map((definition) => definition.id)
+    existingDefinitions
+      .filter((definition) => definition.id !== existingDefinition?.id)
+      .map((definition) => definition.id)
   );
-  const id = getUniqueDropdownId(slugifyDropdownId(name), existingIds);
+  const id =
+    existingDefinition?.id ??
+    getUniqueDropdownId(slugifyDropdownId(name), existingIds);
   const usedOptionIds = new Set<string>();
 
   return {
     id,
     name,
     options: options.map((option, index) => {
-      const optionId = getUniqueDropdownId(
-        slugifyDropdownId(option.label),
-        usedOptionIds
-      );
+      const existingOptionId = existingDefinition?.options.find(
+        (existingOption) =>
+          existingOption.label === option.label &&
+          !usedOptionIds.has(existingOption.id)
+      )?.id;
+      const optionId =
+        existingOptionId ??
+        getUniqueDropdownId(slugifyDropdownId(option.label), usedOptionIds);
       usedOptionIds.add(optionId);
 
       return {
@@ -334,6 +392,12 @@ function promptForDropdownDefinition(
       };
     }),
   };
+}
+
+function formatDropdownOptions(definition: DropdownDefinition) {
+  return definition.options
+    .map((option) => `${option.label}=${option.color}`)
+    .join(", ");
 }
 
 function parseDropdownOptionInput(value: string) {
@@ -367,6 +431,12 @@ function getUniqueDropdownId(id: string, existingIds: Set<string>) {
   }
 
   return candidate;
+}
+
+function sortDropdownDefinitions(definitions: DropdownDefinition[]) {
+  return [...definitions].sort((left, right) =>
+    left.name.localeCompare(right.name)
+  );
 }
 
 function slugifyDropdownId(value: string) {
