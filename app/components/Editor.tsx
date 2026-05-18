@@ -8,7 +8,11 @@ import { mergeRefs } from "react-merge-refs";
 import type { Optional } from "utility-types";
 import insertFiles from "@shared/editor/commands/insertFiles";
 import EditorContainer from "@shared/editor/components/Styles";
-import { AttachmentPreset, TeamPreference, UserPreference } from "@shared/types";
+import {
+  AttachmentPreset,
+  TeamPreference,
+  UserPreference,
+} from "@shared/types";
 import { ProsemirrorHelper } from "@shared/utils/ProsemirrorHelper";
 import { getDataTransferFiles } from "@shared/utils/files";
 import { AttachmentValidation } from "@shared/validations";
@@ -155,6 +159,13 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
 
       const view = localRef?.current?.view;
       if (!view) {
+        return;
+      }
+
+      if (
+        view.dragging ||
+        event.dataTransfer.getData("text/html").includes("data-pm-slice")
+      ) {
         return;
       }
 

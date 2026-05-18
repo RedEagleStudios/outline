@@ -82,6 +82,27 @@ The fork prevents one `Ctrl/Cmd+Z` keypress from triggering both the ProseMirror
 - ProseMirror undo/redo key handlers now return `true` after invoking the editor command so the keymap reports the shortcut as handled.
 - The document-level undo/redo shortcut exits when the browser event was already handled by the editor.
 
+### Current Development: Image Drag Move Behavior
+
+**Files:**
+
+- `shared/editor/nodes/Image.tsx`
+- `shared/editor/components/Image.tsx`
+- `shared/editor/plugins/UploadPlugin.ts`
+- `app/components/Editor.tsx`
+
+**Rationale:**
+
+The fork restores Google Docs-style image movement in the editor. Native browser image dragging was being treated as an external image drop, so dragging an existing image duplicated it instead of moving the original node.
+
+**Implementation Notes:**
+
+- The ProseMirror image node is draggable so internal drag/drop owns the move transaction.
+- Rendered `<img>` elements opt out of native browser dragging so the browser does not provide an external image payload for the drop.
+- Upload handling ignores ProseMirror's own `data-pm-slice` drag payloads and tracks drags that start inside the editor so CDN-backed image URLs are not re-uploaded as copies during an internal move.
+- If an internal image drag lands where ProseMirror cannot compute a drop point, the drop is cancelled before the browser's native contenteditable fallback can insert a copy.
+- The outer editor padding drop zone ignores active ProseMirror drags instead of parsing their drag HTML and appending a duplicate image at the end of the document.
+
 ### 1. Railway And Container Compatibility
 
 **Files:**

@@ -1,6 +1,7 @@
 import type { Node } from "prosemirror-model";
 import { Fragment, Slice } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
+import { dropPoint } from "prosemirror-transform";
 import { v4 as uuidv4 } from "uuid";
 import {
   getDataTransferFiles,
@@ -15,9 +16,21 @@ import uploadPlaceholder, { findPlaceholder } from "../lib/uploadPlaceholder";
 
 export class UploadPlugin extends Plugin {
   constructor(options: Options) {
+    let isInternalDrag = false;
+
     super({
       props: {
         handleDOMEvents: {
+          dragstart(view, event: DragEvent): boolean {
+            isInternalDrag =
+              event.target instanceof globalThis.Node &&
+              view.dom.contains(event.target);
+            return false;
+          },
+          dragend(): boolean {
+            isInternalDrag = false;
+            return false;
+          },
           paste(view, event: ClipboardEvent): boolean {
             if (!view.editable || !options.uploadFile) {
               return false;
@@ -56,6 +69,32 @@ export class UploadPlugin extends Plugin {
           },
           drop(view, event: DragEvent): boolean {
             if (!view.editable || !options.uploadFile) {
+              return false;
+            }
+
+            if (isInternalDrag) {
+              const result = view.posAtCoords({
+                left: event.clientX,
+                top: event.clientY,
+              });
+
+              if (
+                !result ||
+                !view.dragging?.slice ||
+                dropPoint(view.state.doc, result.pos, view.dragging.slice) ===
+                  null
+              ) {
+                event.stopPropagation();
+                event.preventDefault();
+                return true;
+              }
+
+              return false;
+            }
+
+            if (
+              event.dataTransfer?.getData("text/html").includes("data-pm-slice")
+            ) {
               return false;
             }
 
@@ -100,6 +139,16 @@ export class UploadPlugin extends Plugin {
 
             return false;
           },
+        },
+        handleDrop: (_view, event, _slice, moved) => {
+          if (isInternalDrag && !moved) {
+            event.preventDefault();
+            isInternalDrag = false;
+            return true;
+          }
+
+          isInternalDrag = false;
+          return false;
         },
         transformPasted: (slice, view) => {
           const uploads: {

@@ -170,6 +170,7 @@ const Image = (props: Props) => {
         ) : (
           <a
             href={imgLink}
+            draggable={isEditable ? false : undefined}
             // Do not show hover preview when the image is selected
             className={!isSelected ? "use-hover-preview" : ""}
             target="_blank"
@@ -177,6 +178,7 @@ const Image = (props: Props) => {
           >
             <img
               className={EditorStyleHelper.imageHandle}
+              draggable={isEditable ? false : undefined}
               style={{
                 ...widthStyle,
                 display: loaded ? "block" : "none",
@@ -212,6 +214,7 @@ const Image = (props: Props) => {
         {!loaded && width && height && (
           <img
             alt=""
+            draggable={isEditable ? false : undefined}
             style={{
               ...widthStyle,
               display: "block",
