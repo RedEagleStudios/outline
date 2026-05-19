@@ -50,6 +50,7 @@ The fork adds an MVP Google Docs-style dropdown chip for documents. Dropdowns ar
 - `app/editor/components/SelectionToolbar.tsx`
 - `app/editor/components/ToolbarMenu.tsx`
 - `app/editor/menus/formatting.tsx`
+- `Dockerfile`
 - `server/routes/api/ai/*`
 - `server/services/ai/*`
 - `server/env.ts`
@@ -62,6 +63,7 @@ The fork adds an editor selection helper that lets users select text, enter an i
 
 - Enable with `AI_FORMATTING_ENABLED=true` and `AI_FORMATTING_PROVIDER=opencode`.
 - Configure OpenCode with `OPENCODE_COMMAND`, optional `OPENCODE_DIR`, `OPENCODE_CONFIG_DIR`, `OPENCODE_MODEL`, `OPENCODE_AGENT`, and `OPENCODE_ATTACH`. Set `OPENCODE_DIR` on Railway when the OpenCode working directory should live on a persistent volume.
+- The Docker runtime installs the `opencode-ai` CLI and defaults OpenCode runtime/config paths under `/var/lib/outline` so Railway deployments can enable AI formatting with environment variables and, optionally, a persistent volume.
 - The API route is authenticated and rate-limited, validates prompt and selected text length, and invokes `opencode run` server-side via `spawn` with ignored stdin to avoid hanging subprocesses.
 - The editor shows a rendered Markdown diff preview with explicit Accept/Decline actions, and replaces the original selected range only if the selected text still matches the text submitted to the provider.
 - The AI formatter popup is draggable from its dotted handle so long previews can be moved away from the selected content.

@@ -49,12 +49,18 @@ COPY --from=base --chown=nodejs:nodejs $APP_PATH/package.json ./package.json
 
 RUN  apt-get update \
     && apt-get install -y wget \
+    && npm install -g opencode-ai \
+    && npm cache clean --force \
     && rm -rf /var/lib/apt/lists/*
 
-ENV FILE_STORAGE_LOCAL_ROOT_DIR=/var/lib/outline/data
+ENV FILE_STORAGE_LOCAL_ROOT_DIR=/var/lib/outline/data \
+    OPENCODE_DIR=/var/lib/outline/opencode \
+    OPENCODE_CONFIG_DIR=/var/lib/outline/opencode-config
 RUN mkdir -p "$FILE_STORAGE_LOCAL_ROOT_DIR" && \
+    mkdir -p "$OPENCODE_DIR" "$OPENCODE_CONFIG_DIR" && \
     chown -R nodejs:nodejs "$FILE_STORAGE_LOCAL_ROOT_DIR" && \
-    chmod 1777 "$FILE_STORAGE_LOCAL_ROOT_DIR"
+    chown -R nodejs:nodejs "$OPENCODE_DIR" "$OPENCODE_CONFIG_DIR" && \
+    chmod 1777 "$FILE_STORAGE_LOCAL_ROOT_DIR" "$OPENCODE_DIR" "$OPENCODE_CONFIG_DIR"
 
 USER nodejs
 
