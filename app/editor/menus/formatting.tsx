@@ -30,6 +30,7 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import CellBackgroundColorPicker from "../components/CellBackgroundColorPicker";
 import HighlightColorPicker from "../components/HighlightColorPicker";
+import TextColorPicker from "../components/TextColorPicker";
 import type { EditorState } from "prosemirror-state";
 
 import { getDocumentHighlightColors } from "@shared/editor/queries/getDocumentHighlightColors";
@@ -55,9 +56,10 @@ import {
   isMergedCellSelection,
   isMultipleCellSelection,
 } from "@shared/editor/queries/table";
-import { CellSelection } from "prosemirror-tables";
+import { CellSelection, isInTable } from "prosemirror-tables";
 import TableCell from "@shared/editor/nodes/TableCell";
 import Highlight from "@shared/editor/marks/Highlight";
+import TextSize from "@shared/editor/marks/TextSize";
 import { DottedCircleIcon } from "~/components/Icons/DottedCircleIcon";
 
 export default function formattingMenuItems(
@@ -74,12 +76,25 @@ export default function formattingMenuItems(
   const isTouch = isTouchDevice();
   const isList = isInList(state);
   const isTableCell = state.selection instanceof CellSelection;
+  const isTable = isTableCell || isInTable(state);
 
   const highlight = getMarksBetween(
     state.selection.from,
     state.selection.to,
     state
   ).find(({ mark }) => mark.type === state.schema.marks.highlight);
+
+  const textColor = getMarksBetween(
+    state.selection.from,
+    state.selection.to,
+    state
+  ).find(({ mark }) => mark.type === state.schema.marks.text_color);
+
+  const textSize = getMarksBetween(
+    state.selection.from,
+    state.selection.to,
+    state
+  ).find(({ mark }) => mark.type === state.schema.marks.text_size);
 
   const cellSelectionHasBackground = isTableCell
     ? hasNodeAttrMarkCellSelection(
@@ -245,7 +260,7 @@ export default function formattingMenuItems(
         <HighlightIcon />
       ),
       active: () => !!highlight,
-      visible: !isCode && (!isMobile || !isEmpty) && !isTableCell,
+      visible: !isCode && (!isMobile || !isEmpty) && !isTable,
       children: (): MenuItem[] => {
         // Get all unique highlight colors used in the document (lazily computed when menu opens)
         const documentHighlightColors = getDocumentHighlightColors(state);
@@ -326,6 +341,94 @@ export default function formattingMenuItems(
           },
         ];
       },
+    },
+    {
+      tooltip: "Text color",
+      icon: textColor?.mark.attrs.color ? (
+        <CircleIcon color={textColor.mark.attrs.color} />
+      ) : (
+        <PaletteIcon />
+      ),
+      active: () => !!textColor,
+      visible: !isCode && (!isMobile || !isEmpty) && !isTable,
+      children: [
+        ...(textColor
+          ? [
+              {
+                name: "text_color",
+                label: dictionary.none,
+                icon: <DottedCircleIcon retainColor color="transparent" />,
+                active: () => false,
+                attrs: { color: null },
+              },
+            ]
+          : []),
+        ...Highlight.presetColors.map((preset) => ({
+          name: "text_color",
+          label: preset.name,
+          icon: <CircleIcon retainColor color={preset.hex} />,
+          active: isMarkActive(schema.marks.text_color, { color: preset.hex }),
+          attrs: { color: preset.hex },
+        })),
+        ...(textColor?.mark.attrs.color &&
+        !Highlight.isPresetColor(textColor.mark.attrs.color)
+          ? [
+              {
+                name: "text_color",
+                label: textColor.mark.attrs.color,
+                icon: (
+                  <CircleIcon retainColor color={textColor.mark.attrs.color} />
+                ),
+                active: isMarkActive(schema.marks.text_color, {
+                  color: textColor.mark.attrs.color,
+                }),
+                attrs: { color: textColor.mark.attrs.color },
+              },
+            ]
+          : []),
+        {
+          icon: <CircleIcon retainColor color="rainbow" />,
+          label: "Custom",
+          children: [
+            {
+              content: (
+                <TextColorPicker
+                  activeColor={
+                    textColor?.mark.attrs.color || Highlight.presetColors[0].hex
+                  }
+                />
+              ),
+              preventCloseCondition: () =>
+                !!document.activeElement?.matches(
+                  ".ProseMirror.ProseMirror-focused"
+                ),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      name: "text_size",
+      tooltip: "Text size",
+      label: textSize?.mark.attrs.size
+        ? `${textSize.mark.attrs.size}px`
+        : "Size",
+      active: () => !!textSize,
+      visible: !isCode && (!isMobile || !isEmpty) && !isTable,
+      children: [
+        {
+          name: "text_size",
+          label: "Default",
+          active: () => !textSize,
+          attrs: { size: null },
+        },
+        ...TextSize.presetSizes.map((size) => ({
+          name: "text_size",
+          label: `${size}px`,
+          active: isMarkActive(schema.marks.text_size, { size }),
+          attrs: { size },
+        })),
+      ],
     },
     {
       name: "code_inline",
