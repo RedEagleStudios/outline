@@ -124,6 +124,22 @@ export default function tableColMenuItems(
       name: "separator",
     },
     {
+      name: "mergeCells",
+      tooltip: dictionary.mergeCells,
+      icon: <TableMergeCellsIcon />,
+      visible: isMultipleCellSelection(state),
+    },
+    {
+      name: "splitCell",
+      tooltip: dictionary.splitCell,
+      icon: <TableSplitCellsIcon />,
+      visible: isMergedCellSelection(state),
+    },
+    {
+      name: "separator",
+      visible: isMultipleCellSelection(state) || isMergedCellSelection(state),
+    },
+    {
       name: "sortTable",
       tooltip: dictionary.sortAsc,
       attrs: { index, direction: "asc" },
@@ -232,21 +248,6 @@ export default function tableColMenuItems(
           icon: <ArrowRightIcon />,
           attrs: { from: index, to: index + 1 },
           visible: index < tableMap.map.width - 1,
-        },
-        {
-          name: "separator",
-        },
-        {
-          name: "mergeCells",
-          label: dictionary.mergeCells,
-          icon: <TableMergeCellsIcon />,
-          visible: isMultipleCellSelection(state),
-        },
-        {
-          name: "splitCell",
-          label: dictionary.splitCell,
-          icon: <TableSplitCellsIcon />,
-          visible: isMergedCellSelection(state),
         },
         {
           name: "distributeColumns",

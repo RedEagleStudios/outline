@@ -1,3 +1,4 @@
+import type { Node as ProsemirrorNode } from "prosemirror-model";
 import type { Command } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
 import Extension from "../lib/Extension";
@@ -18,7 +19,16 @@ export default class DeleteNearAtom extends Extension {
   }
 }
 
-function deleteForwardNearAtom(): Command {
+function isProtectedInlineNode(node: ProsemirrorNode | null | undefined) {
+  return node?.isInline && (node.isAtom || node.type.name === "image");
+}
+
+/**
+ * Delete nearby whitespace before falling back to default atom deletion.
+ *
+ * @returns the delete command.
+ */
+export function deleteForwardNearAtom(): Command {
   return (state, dispatch) => {
     const { selection } = state;
     if (!(selection instanceof TextSelection)) {
@@ -33,7 +43,16 @@ function deleteForwardNearAtom(): Command {
       return false;
     }
 
+    const nodeBefore = $cursor.nodeBefore;
     const nodeAfter = $cursor.nodeAfter;
+
+    if (isProtectedInlineNode(nodeBefore) && nodeAfter?.text?.startsWith(" ")) {
+      dispatch?.(
+        state.tr.delete($cursor.pos, $cursor.pos + 1).scrollIntoView()
+      );
+      return true;
+    }
+
     if (!nodeAfter?.isText || nodeAfter.nodeSize !== 1) {
       return false;
     }
@@ -46,7 +65,7 @@ function deleteForwardNearAtom(): Command {
     const $afterText = state.doc.resolve(textEndPos);
     const nodeAfterText = $afterText.nodeAfter;
 
-    if (nodeAfterText?.isAtom && nodeAfterText.isInline) {
+    if (isProtectedInlineNode(nodeAfterText)) {
       if (dispatch) {
         dispatch(
           state.tr.delete($cursor.pos, $cursor.pos + 1).scrollIntoView()
@@ -59,7 +78,12 @@ function deleteForwardNearAtom(): Command {
   };
 }
 
-function deleteBackwardNearAtom(): Command {
+/**
+ * Delete nearby whitespace before falling back to default atom deletion.
+ *
+ * @returns the backspace command.
+ */
+export function deleteBackwardNearAtom(): Command {
   return (state, dispatch) => {
     const { selection } = state;
     if (!(selection instanceof TextSelection)) {
@@ -73,11 +97,25 @@ function deleteBackwardNearAtom(): Command {
 
     const nodeBefore = $cursor.nodeBefore;
     const nodeAfter = $cursor.nodeAfter;
+
+    if (nodeBefore?.isText && nodeBefore.text?.endsWith(" ")) {
+      const textStartPos = $cursor.pos - nodeBefore.nodeSize;
+      const $beforeText = state.doc.resolve(textStartPos);
+      const nodeBeforeText = $beforeText.nodeBefore;
+
+      if (isProtectedInlineNode(nodeBeforeText)) {
+        dispatch?.(
+          state.tr.delete($cursor.pos - 1, $cursor.pos).scrollIntoView()
+        );
+        return true;
+      }
+    }
+
     if (!nodeBefore?.isText || nodeBefore.nodeSize !== 1) {
       return false;
     }
 
-    if (nodeAfter?.isAtom && nodeAfter.isInline) {
+    if (isProtectedInlineNode(nodeAfter)) {
       if (dispatch) {
         dispatch(
           state.tr.delete($cursor.pos - 1, $cursor.pos).scrollIntoView()

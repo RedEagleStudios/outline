@@ -11,11 +11,12 @@ import Extension from "@shared/editor/lib/Extension";
 import { Action, toggleFoldPluginKey } from "@shared/editor/nodes/ToggleBlock";
 import { isToggleBlock } from "@shared/editor/queries/toggleBlock";
 import { ancestors } from "@shared/editor/utils";
+import { isFirefox } from "@shared/utils/browser";
 import FindAndReplace from "../components/FindAndReplace";
 
 const pluginKey = new PluginKey("find-and-replace");
 const supportsHighlightAPI =
-  typeof CSS !== "undefined" && CSS.highlights !== undefined;
+  typeof CSS !== "undefined" && CSS.highlights !== undefined && !isFirefox;
 
 export default class FindAndReplaceExtension extends Extension {
   public get name() {
@@ -164,7 +165,7 @@ export default class FindAndReplaceExtension extends Extension {
 
       dispatch?.(state.tr.setMeta(pluginKey, {}));
       this.expandFoldedTogglesForCurrentMatch();
-      this.scrollToCurrentMatch();
+      this.scheduleScrollToCurrentMatch();
 
       return true;
     };
@@ -212,9 +213,13 @@ export default class FindAndReplaceExtension extends Extension {
 
       dispatch?.(state.tr.setMeta(pluginKey, {}));
       this.expandFoldedTogglesForCurrentMatch();
-      this.scrollToCurrentMatch();
+      this.scheduleScrollToCurrentMatch();
       return true;
     };
+  }
+
+  private scheduleScrollToCurrentMatch() {
+    requestAnimationFrame(() => this.scrollToCurrentMatch());
   }
 
   private scrollToCurrentMatch() {

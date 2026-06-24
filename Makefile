@@ -2,7 +2,7 @@ up:
 	docker compose up -d redis postgres
 	yarn install-local-ssl
 	yarn install --immutable
-	yarn dev:watch
+	SERVICES=collaboration,websockets,admin,web yarn dev:watch
 
 build:
 	docker compose build --pull outline

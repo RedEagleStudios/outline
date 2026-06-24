@@ -1,6 +1,9 @@
 import {
   BoldIcon,
   CodeIcon,
+  AlignLeftIcon,
+  AlignRightIcon,
+  AlignCenterIcon,
   Heading1Icon,
   Heading2Icon,
   BlockQuoteIcon,
@@ -17,6 +20,7 @@ import {
   IndentIcon,
   CopyIcon,
   Heading3Icon,
+  Heading4Icon,
   TableMergeCellsIcon,
   TableSplitCellsIcon,
   PaletteIcon,
@@ -44,6 +48,7 @@ import {
 } from "@shared/utils/browser";
 import {
   getColorSetForSelectedCells,
+  getAlignmentSetForSelectedCells,
   getDocumentTableBackgroundColors,
   hasNodeAttrMarkCellSelection,
   hasNodeAttrMarkWithAttrsCellSelection,
@@ -84,6 +89,9 @@ export default function formattingMenuItems(
     : false;
 
   const selectedCellsColorSet = getColorSetForSelectedCells(state.selection);
+  const selectedCellsAlignmentSet = getAlignmentSetForSelectedCells(
+    state.selection
+  );
 
   return [
     {
@@ -332,6 +340,40 @@ export default function formattingMenuItems(
       visible: !isCodeBlock,
     },
     {
+      name: "setCellSelectionAttr",
+      tooltip: dictionary.alignLeft,
+      icon: <AlignLeftIcon />,
+      attrs: { alignment: "left" },
+      active: () =>
+        selectedCellsAlignmentSet.size === 1 &&
+        selectedCellsAlignmentSet.has("left"),
+      visible: !isCodeBlock && isTableCell,
+    },
+    {
+      name: "setCellSelectionAttr",
+      tooltip: dictionary.alignCenter,
+      icon: <AlignCenterIcon />,
+      attrs: { alignment: "center" },
+      active: () =>
+        selectedCellsAlignmentSet.size === 1 &&
+        selectedCellsAlignmentSet.has("center"),
+      visible: !isCodeBlock && isTableCell,
+    },
+    {
+      name: "setCellSelectionAttr",
+      tooltip: dictionary.alignRight,
+      icon: <AlignRightIcon />,
+      attrs: { alignment: "right" },
+      active: () =>
+        selectedCellsAlignmentSet.size === 1 &&
+        selectedCellsAlignmentSet.has("right"),
+      visible: !isCodeBlock && isTableCell,
+    },
+    {
+      name: "separator",
+      visible: isTableCell,
+    },
+    {
       name: "heading",
       tooltip: dictionary.heading,
       shortcut: `⇧+Ctrl+1`,
@@ -356,6 +398,15 @@ export default function formattingMenuItems(
       icon: <Heading3Icon />,
       active: isNodeActive(schema.nodes.heading, { level: 3 }),
       attrs: { level: 3 },
+      visible: !isCodeBlock && (!isMobile || isEmpty),
+    },
+    {
+      name: "heading",
+      tooltip: dictionary.h4,
+      shortcut: `⇧+Ctrl+4`,
+      icon: <Heading4Icon />,
+      active: isNodeActive(schema.nodes.heading, { level: 4 }),
+      attrs: { level: 4 },
       visible: !isCodeBlock && (!isMobile || isEmpty),
     },
     {

@@ -493,6 +493,29 @@ export function getColorSetForSelectedCells(selection: Selection): Set<string> {
 }
 
 /**
+ * Returns the set of text alignments applied to selected cells.
+ *
+ * @param selection The current selection.
+ * @returns a set of alignment values from selected cells.
+ */
+export function getAlignmentSetForSelectedCells(
+  selection: Selection
+): Set<string> {
+  const alignments = new Set<string>();
+  if (!(selection instanceof CellSelection)) {
+    return alignments;
+  }
+
+  selection.forEachCell((cell) => {
+    if (typeof cell.attrs.alignment === "string") {
+      alignments.add(cell.attrs.alignment);
+    }
+  });
+
+  return alignments;
+}
+
+/**
  * Get all unique background colors used in table cells across the entire document.
  *
  * @param state The editor state.

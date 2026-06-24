@@ -1,5 +1,8 @@
 import {
   TrashIcon,
+  AlignLeftIcon,
+  AlignRightIcon,
+  AlignCenterIcon,
   InsertAboveIcon,
   InsertBelowIcon,
   MoreIcon,
@@ -46,6 +49,24 @@ function getRowColors(state: EditorState, rowIndex: number): Set<string> {
   return colors;
 }
 
+/**
+ * Get the set of text alignments used in a row.
+ */
+function getRowAlignments(state: EditorState, rowIndex: number): Set<string> {
+  const alignments = new Set<string>();
+  const cells = getCellsInRow(rowIndex)(state) || [];
+
+  cells.forEach((pos) => {
+    const node = state.doc.nodeAt(pos);
+
+    if (typeof node?.attrs.alignment === "string") {
+      alignments.add(node.attrs.alignment);
+    }
+  });
+
+  return alignments;
+}
+
 export default function tableRowMenuItems(
   state: EditorState,
   readOnly: boolean,
@@ -67,6 +88,7 @@ export default function tableRowMenuItems(
 
   const tableMap = selectedRect(state);
   const rowColors = getRowColors(state, index);
+  const rowAlignments = getRowAlignments(state, index);
   const hasBackground = rowColors.size > 0;
   const activeColor =
     rowColors.size === 1 ? rowColors.values().next().value : null;
@@ -76,6 +98,46 @@ export default function tableRowMenuItems(
       : undefined;
 
   return [
+    {
+      name: "setRowAttr",
+      tooltip: dictionary.alignLeft,
+      icon: <AlignLeftIcon />,
+      attrs: { index, alignment: "left" },
+      active: () => rowAlignments.size === 1 && rowAlignments.has("left"),
+    },
+    {
+      name: "setRowAttr",
+      tooltip: dictionary.alignCenter,
+      icon: <AlignCenterIcon />,
+      attrs: { index, alignment: "center" },
+      active: () => rowAlignments.size === 1 && rowAlignments.has("center"),
+    },
+    {
+      name: "setRowAttr",
+      tooltip: dictionary.alignRight,
+      icon: <AlignRightIcon />,
+      attrs: { index, alignment: "right" },
+      active: () => rowAlignments.size === 1 && rowAlignments.has("right"),
+    },
+    {
+      name: "separator",
+    },
+    {
+      name: "mergeCells",
+      tooltip: dictionary.mergeCells,
+      icon: <TableMergeCellsIcon />,
+      visible: isMultipleCellSelection(state),
+    },
+    {
+      name: "splitCell",
+      tooltip: dictionary.splitCell,
+      icon: <TableSplitCellsIcon />,
+      visible: isMergedCellSelection(state),
+    },
+    {
+      name: "separator",
+      visible: isMultipleCellSelection(state) || isMergedCellSelection(state),
+    },
     {
       tooltip: dictionary.background,
       icon:
@@ -168,24 +230,6 @@ export default function tableRowMenuItems(
           icon: <ArrowDownIcon />,
           attrs: { from: index, to: index + 1 },
           visible: index < tableMap.map.height - 1,
-        },
-        {
-          name: "separator",
-        },
-        {
-          name: "mergeCells",
-          label: dictionary.mergeCells,
-          icon: <TableMergeCellsIcon />,
-          visible: isMultipleCellSelection(state),
-        },
-        {
-          name: "splitCell",
-          label: dictionary.splitCell,
-          icon: <TableSplitCellsIcon />,
-          visible: isMergedCellSelection(state),
-        },
-        {
-          name: "separator",
         },
         {
           name: "deleteRow",

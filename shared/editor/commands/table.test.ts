@@ -1,5 +1,6 @@
 import type { Transaction } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 import {
   createEditorState,
   doc,
@@ -8,7 +9,12 @@ import {
   td,
   tr,
 } from "@shared/test/editor";
-import { addRowAndMoveSelection, indentSelectedTableText } from "./table";
+import {
+  addRowAndMoveSelection,
+  indentSelectedTableText,
+  setCellSelectionAttr,
+  setRowAttr,
+} from "./table";
 
 function getTextPosition(
   state: ReturnType<typeof createEditorState>,
@@ -107,5 +113,92 @@ describe("addRowAndMoveSelection", () => {
     });
 
     expect(dropdowns).toEqual(["open"]);
+  });
+});
+
+describe("setRowAttr", () => {
+  it("sets text alignment for every cell in a row", () => {
+    const state = createEditorState(
+      doc(
+        table([
+          tr([td("A"), td("B")]),
+          tr([td("C", { alignment: "right" }), td("D")]),
+        ])
+      )
+    );
+    const textPosition = getTextPosition(state, "C");
+    const selectedState = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, textPosition))
+    );
+    let transaction: Transaction | undefined;
+
+    const handled = setRowAttr({ index: 1, alignment: "center" })(
+      selectedState,
+      (tr) => {
+        transaction = tr;
+      }
+    );
+
+    expect(handled).toBe(true);
+
+    if (!transaction) {
+      throw new Error("Expected setRowAttr to dispatch a transaction");
+    }
+
+    const nextState = selectedState.apply(transaction);
+    const firstRow = nextState.doc.firstChild?.child(0);
+    const secondRow = nextState.doc.firstChild?.child(1);
+
+    expect(firstRow?.child(0).attrs.alignment).toBe(null);
+    expect(firstRow?.child(1).attrs.alignment).toBe(null);
+    expect(secondRow?.child(0).attrs.alignment).toBe("center");
+    expect(secondRow?.child(1).attrs.alignment).toBe("center");
+  });
+});
+
+describe("setCellSelectionAttr", () => {
+  it("sets text alignment for selected cells only", () => {
+    const state = createEditorState(
+      doc(table([tr([td("A"), td("B")]), tr([td("C"), td("D")])]))
+    );
+    const cellPositions: number[] = [];
+    state.doc.descendants((node, pos) => {
+      if (node.type.name === "td") {
+        cellPositions.push(pos);
+      }
+    });
+    const selectedState = state.apply(
+      state.tr.setSelection(
+        new CellSelection(
+          state.doc.resolve(cellPositions[0]),
+          state.doc.resolve(cellPositions[1])
+        )
+      )
+    );
+    let transaction: Transaction | undefined;
+
+    const handled = setCellSelectionAttr({ alignment: "right" })(
+      selectedState,
+      (tr) => {
+        transaction = tr;
+      }
+    );
+
+    expect(handled).toBe(true);
+
+    if (!transaction) {
+      throw new Error(
+        "Expected setCellSelectionAttr to dispatch a transaction"
+      );
+    }
+
+    const nextState = selectedState.apply(transaction);
+    const firstRow = nextState.doc.firstChild?.child(0);
+    const secondRow = nextState.doc.firstChild?.child(1);
+
+    expect(firstRow?.child(0).attrs.alignment).toBe("right");
+    expect(firstRow?.child(1).attrs.alignment).toBe("right");
+    expect(secondRow?.child(0).attrs.alignment).toBe(null);
+    expect(secondRow?.child(1).attrs.alignment).toBe(null);
   });
 });

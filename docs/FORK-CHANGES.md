@@ -12,6 +12,37 @@ This file also records notable branch-level and fork-local development changes t
 
 ## Branch-Level Changes From `main`
 
+### Current Development: Editor Content Navigation Improvements
+
+**Files:**
+
+- `app/scenes/Document/components/Contents.tsx`
+- `app/menus/TableOfContentsMenu.tsx`
+- `app/editor/extensions/FindAndReplace.tsx`
+- `app/editor/menus/formatting.tsx`
+- `app/editor/menus/tableRow.tsx`
+- `app/editor/menus/tableCol.tsx`
+- `shared/editor/commands/table.ts`
+- `shared/editor/queries/table.ts`
+- `shared/editor/extensions/DeleteNearAtom.ts`
+- `shared/editor/nodes/Table.ts`
+
+**Rationale:**
+
+The fork improves document navigation by including level-four headings in table-of-contents surfaces and making editor find navigation wait for highlight state before scrolling to the active match.
+It also adds row-level and selected-cell table alignment controls so alignment is not only exposed through column actions, and surfaces merge/split cell controls directly in table row and column toolbars.
+Whitespace deletion next to inline image atoms is also handled before the browser/editor default can remove the adjacent image.
+
+**Implementation Notes:**
+
+- Heading 4 now appears in the selection formatting toolbar, document contents sidebar, and table-of-contents dropdown.
+- Find/replace next and previous navigation schedules scrolling after the editor transaction updates highlight state, preventing stale highlight ranges from blocking auto-scroll.
+- Firefox-family browsers use ProseMirror decoration highlights instead of the CSS Custom Highlight API because `::highlight()` rendering is not reliable in Firefox/Zen for this editor surface.
+- Table row menus now expose left, center, and right alignment buttons backed by a row-scoped command that updates the selected row’s cell alignment attrs.
+- The selection formatting toolbar now exposes left, center, and right alignment for selected table cells.
+- Merge and split cell actions now appear as direct row/column toolbar buttons when applicable instead of being hidden inside the More submenu.
+- Delete and Backspace remove whitespace between an inline image and following text without deleting the image node.
+
 ### Current Development: Inline Document Dropdowns
 
 **Files:**

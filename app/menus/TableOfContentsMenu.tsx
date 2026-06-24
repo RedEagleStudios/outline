@@ -22,7 +22,7 @@ function TableOfContentsMenu() {
   const headingActions = useMemo(
     () =>
       headings
-        .filter((heading) => heading.level < 4)
+        .filter((heading) => heading.level <= 4)
         .map((heading) =>
           createAction({
             name: (

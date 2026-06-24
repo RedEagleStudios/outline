@@ -73,7 +73,7 @@ function Contents() {
       <Heading>{t("Contents")}</Heading>
       <List>
         {headings
-          .filter((heading) => heading.level < 4)
+          .filter((heading) => heading.level <= 4)
           .map((heading) => (
             <ListItem
               key={heading.id}

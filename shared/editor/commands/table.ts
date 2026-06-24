@@ -737,6 +737,41 @@ export function setColumnAttr({
 }
 
 /**
+ * Set row attributes. Passed attributes will be merged with existing.
+ *
+ * @param attrs The attributes to set.
+ * @returns the command.
+ */
+export function setRowAttr({
+  index,
+  alignment,
+}: {
+  index: number;
+  alignment: string;
+}): Command {
+  return (state, dispatch) => {
+    if (!isInTable(state)) {
+      return false;
+    }
+
+    if (dispatch) {
+      const cells = getCellsInRow(index)(state) || [];
+      let tr = state.tr;
+      cells.forEach((pos) => {
+        const node = state.doc.nodeAt(pos);
+        tr = tr.setNodeMarkup(pos, undefined, {
+          ...node?.attrs,
+          alignment,
+        });
+      });
+
+      dispatch(tr);
+    }
+    return true;
+  };
+}
+
+/**
  * Set table attributes. Passed attributes will be merged with existing.
  *
  * @param attrs The attributes to set
@@ -1119,6 +1154,31 @@ export const toggleCellSelectionBackgroundAndCollapseSelection = ({
     toggleCellSelectionBackground({ color }),
     collapseSelection()
   );
+
+/**
+ * Set attributes on all selected table cells.
+ *
+ * @param attrs The attributes to set.
+ * @returns the command.
+ */
+export const setCellSelectionAttr =
+  (attrs: { alignment: string }): Command =>
+  (state, dispatch) => {
+    if (!(state.selection instanceof CellSelection)) {
+      return false;
+    }
+
+    let tr = state.tr;
+    state.selection.forEachCell((cell, pos) => {
+      tr = tr.setNodeMarkup(pos, undefined, {
+        ...cell.attrs,
+        ...attrs,
+      });
+    });
+
+    dispatch?.(tr);
+    return true;
+  };
 
 export const toggleRowBackgroundAndCollapseSelection = ({
   color,
