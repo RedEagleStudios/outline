@@ -1,3 +1,4 @@
+import first from "lodash/first";
 import { observer } from "mobx-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -6,6 +7,7 @@ import { useRouteMatch } from "react-router-dom";
 import styled from "styled-components";
 import Text from "@shared/components/Text";
 import { richExtensions, withComments } from "@shared/editor/nodes";
+import useShare from "@shared/hooks/useShare";
 import { TeamPreference } from "@shared/types";
 import { colorPalette } from "@shared/utils/collections";
 import Comment from "~/models/Comment";
@@ -15,6 +17,9 @@ import type { RefHandle } from "~/components/ContentEditable";
 import { useDocumentContext } from "~/components/DocumentContext";
 import type { Props as EditorProps } from "~/components/Editor";
 import Editor from "~/components/Editor";
+import env from "~/env";
+import ExcalidrawDialog from "~/editor/components/ExcalidrawDialog";
+import ExcalidrawViewer from "~/editor/components/ExcalidrawViewer";
 import Flex from "~/components/Flex";
 import Time from "~/components/Time";
 import { withUIExtensions } from "~/editor/extensions";
@@ -31,14 +36,10 @@ import {
   matchDocumentHistory,
 } from "~/utils/routeHelpers";
 import { decodeURIComponentSafe } from "~/utils/urls";
+import { getLangFor } from "~/utils/language";
 import MultiplayerEditor from "./AsyncMultiplayerEditor";
 import DocumentMeta from "./DocumentMeta";
 import DocumentTitle from "./DocumentTitle";
-import ExcalidrawDialog from "~/editor/components/ExcalidrawDialog";
-import ExcalidrawViewer from "~/editor/components/ExcalidrawViewer";
-import first from "lodash/first";
-import { getLangFor } from "~/utils/language";
-import useShare from "@shared/hooks/useShare";
 
 const extensions = withUIExtensions(withComments(richExtensions));
 
@@ -191,6 +192,30 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
     () => setEditorInitialized(false),
     [setEditorInitialized]
   );
+  const tableEditHistoryEnabled =
+    (env.TABLE_EDIT_HISTORY_ENABLED === true ||
+      env.TABLE_EDIT_HISTORY_ENABLED === "true") &&
+    !readOnly &&
+    !shareId &&
+    !rest.template &&
+    !!can.listRevisions;
+  const handleOpenTableCellHistory = React.useCallback(
+    (context: {
+      tableId: string;
+      cellId: string;
+      rowId: string | null;
+      rowIndex: number | null;
+      columnIndex: number | null;
+    }) => {
+      ui.cellHistory = {
+        documentId: document.id,
+        sourceName: document.titleWithDefault,
+        ...context,
+      };
+      ui.set({ rightSidebar: "cellHistory" });
+    },
+    [document.id, document.titleWithDefault, ui]
+  );
 
   const handleOpenExcalidraw = React.useCallback(
     (options: Parameters<NonNullable<EditorProps["onOpenExcalidraw"]>>[0]) => {
@@ -278,7 +303,6 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
         scrollTo={decodeURIComponentSafe(window.location.hash)}
         readOnly={readOnly}
         userId={user?.id}
-        documentId={document.id}
         onOpenExcalidraw={handleOpenExcalidraw}
         renderExcalidraw={renderExcalidraw}
         focusedCommentId={focusedComment?.id}
@@ -302,6 +326,11 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
         extensions={extensions}
         editorStyle={editorStyle}
         {...rest}
+        documentId={document.id}
+        tableEditHistoryEnabled={tableEditHistoryEnabled}
+        onOpenTableCellHistory={
+          tableEditHistoryEnabled ? handleOpenTableCellHistory : undefined
+        }
       />
       <div ref={childRef}>{children}</div>
     </Flex>
