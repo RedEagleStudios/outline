@@ -40,6 +40,7 @@ The fork adds first-class document-embedded Excalidraw drawings for teams that n
 - Saving a drawing creates a new drawing revision and clients must update the mounted editor node through a normal editor transaction so document revisions capture pointer changes.
 - Markdown/plain-text fallback renders the drawing title when rich rendering is unavailable.
 - Viewer and editor surfaces now use clearer loading, empty, and error states, plus a taller modal canvas and edit-only affordances in document view.
+- The PWA Workbox precache limit is raised to 6 MiB because the production Mermaid vendor chunk can exceed 5 MiB after the editor bundle changes, causing Railway builds to fail during service worker generation.
 
 ### Current Development: Editor Text Color and Size Marks
 
