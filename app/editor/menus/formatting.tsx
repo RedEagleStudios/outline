@@ -260,7 +260,7 @@ export default function formattingMenuItems(
         <HighlightIcon />
       ),
       active: () => !!highlight,
-      visible: !isCode && (!isMobile || !isEmpty) && !isTable,
+      visible: !isCode && (!isMobile || !isEmpty) && !isTableCell,
       children: (): MenuItem[] => {
         // Get all unique highlight colors used in the document (lazily computed when menu opens)
         const documentHighlightColors = getDocumentHighlightColors(state);
@@ -350,7 +350,7 @@ export default function formattingMenuItems(
         <PaletteIcon />
       ),
       active: () => !!textColor,
-      visible: !isCode && (!isMobile || !isEmpty) && !isTable,
+      visible: !isCode && (!isMobile || !isEmpty) && !isTableCell,
       children: [
         ...(textColor
           ? [

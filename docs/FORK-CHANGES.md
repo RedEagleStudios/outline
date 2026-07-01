@@ -32,7 +32,7 @@ The fork adds rich-editor text color and preset text size formatting for teams t
 - Text color is stored as a `text_color` mark with validated hex colors, serialized as a span with `data-text-color` and inline `color` style.
 - Text size is stored as a `text_size` mark constrained to preset pixel values; choosing Default removes the mark rather than storing a default size.
 - Markdown serialization and parsing preserve these marks with safe inline span tokens so server/MCP edits round-trip text styling instead of dropping it.
-- Formatting toolbar controls are hidden in code and table contexts for the initial implementation.
+- Formatting toolbar controls are hidden for code blocks and whole-cell table selections; they remain available for normal cursor or text selections inside table cells.
 
 ### Current Development: Editor Content Navigation Improvements
 
