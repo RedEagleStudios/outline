@@ -821,6 +821,15 @@ export class Environment {
     this.toOptionalNumber(environment.AI_FORMATTING_MAX_PROMPT_CHARS) ?? 1000;
 
   /**
+   * Whether read-only table edit history API endpoints are enabled.
+   */
+  @Public
+  @IsBoolean()
+  public TABLE_EDIT_HISTORY_ENABLED = this.toBoolean(
+    environment.TABLE_EDIT_HISTORY_ENABLED ?? "true"
+  );
+
+  /**
    * Timeout in milliseconds for AI formatting provider calls.
    */
   @IsNumber()

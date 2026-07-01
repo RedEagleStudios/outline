@@ -1,9 +1,14 @@
+import {
+  DOMParser as ProsemirrorDOMParser,
+  DOMSerializer,
+} from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import {
   createEditorState,
   doc,
+  p,
   schema,
   table,
   td,
@@ -200,5 +205,59 @@ describe("setCellSelectionAttr", () => {
     expect(firstRow?.child(1).attrs.alignment).toBe("right");
     expect(secondRow?.child(0).attrs.alignment).toBe(null);
     expect(secondRow?.child(1).attrs.alignment).toBe(null);
+  });
+});
+
+describe("table identity attributes", () => {
+  const itWithDOM = typeof document === "undefined" ? it.skip : it;
+
+  it("round-trips ids through ProseMirror JSON", () => {
+    const tableNode = schema.nodes.table.create(
+      { tableId: "table-1" },
+      schema.nodes.tr.create(
+        { rowId: "row-1" },
+        schema.nodes.td.create({ cellId: "cell-1" }, p("Cell"))
+      )
+    );
+
+    const parsed = schema.nodeFromJSON(tableNode.toJSON());
+
+    expect(parsed.attrs.tableId).toBe("table-1");
+    expect(parsed.child(0).attrs.rowId).toBe("row-1");
+    expect(parsed.child(0).child(0).attrs.cellId).toBe("cell-1");
+  });
+
+  itWithDOM("does not serialize ids into DOM", () => {
+    const tableNode = schema.nodes.table.create(
+      { tableId: "table-1" },
+      schema.nodes.tr.create(
+        { rowId: "row-1" },
+        schema.nodes.th.create({ cellId: "cell-1" }, p("Cell"))
+      )
+    );
+    const wrapper = document.createElement("div");
+    const fragment = DOMSerializer.fromSchema(schema).serializeNode(tableNode);
+
+    wrapper.appendChild(fragment);
+
+    expect(wrapper.querySelector("[data-table-id]")).toBeNull();
+    expect(wrapper.querySelector("[data-row-id]")).toBeNull();
+    expect(wrapper.querySelector("[data-cell-id]")).toBeNull();
+    expect(wrapper.innerHTML).not.toContain("table-1");
+    expect(wrapper.innerHTML).not.toContain("row-1");
+    expect(wrapper.innerHTML).not.toContain("cell-1");
+  });
+
+  itWithDOM("does not parse ids from DOM", () => {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML =
+      '<table data-table-id="table-1"><tbody><tr data-row-id="row-1"><td data-cell-id="cell-1"><p>Cell</p></td></tr></tbody></table>';
+
+    const parsed = ProsemirrorDOMParser.fromSchema(schema).parse(wrapper);
+    const tableNode = parsed.firstChild;
+
+    expect(tableNode?.attrs.tableId).toBeNull();
+    expect(tableNode?.child(0).attrs.rowId).toBeNull();
+    expect(tableNode?.child(0).child(0).attrs.cellId).toBeNull();
   });
 });

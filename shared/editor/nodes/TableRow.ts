@@ -195,6 +195,11 @@ export default class TableRow extends Node {
       content: "(th | td)*",
       tableRole: "row",
       parseDOM: [{ tag: "tr" }],
+      attrs: {
+        rowId: {
+          default: null,
+        },
+      },
       toDOM() {
         return ["tr", 0];
       },

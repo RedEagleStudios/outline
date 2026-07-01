@@ -79,7 +79,18 @@ class UiStore {
   sidebarCollapsed = false;
 
   @observable
-  rightSidebar: "comments" | "history" | null = null;
+  rightSidebar: "comments" | "history" | "cellHistory" | null = null;
+
+  @observable
+  cellHistory: {
+    documentId: string;
+    tableId: string;
+    cellId: string;
+    rowId: string | null;
+    rowIndex: number | null;
+    columnIndex: number | null;
+    sourceName: string;
+  } | null = null;
 
   @observable
   sidebarIsResizing = false;

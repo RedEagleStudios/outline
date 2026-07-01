@@ -64,6 +64,18 @@ export type Props = {
   id?: string;
   /** The user id of the current user */
   userId?: string;
+  /** The document id, when editing a persisted document. */
+  documentId?: string;
+  /** Whether best-effort table edit history is enabled. */
+  tableEditHistoryEnabled?: boolean;
+  /** Callback when cell history should be opened for a selected cell. */
+  onOpenTableCellHistory?: (context: {
+    tableId: string;
+    cellId: string;
+    rowId: string | null;
+    rowIndex: number | null;
+    columnIndex: number | null;
+  }) => void;
   /** The editor content, should only be changed if you wish to reset the content */
   value?: string | ProsemirrorData | ProsemirrorNode;
   /** The initial editor content as a markdown string, JSON object, or ProsemirrorNode */

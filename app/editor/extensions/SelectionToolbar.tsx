@@ -1,4 +1,3 @@
-import some from "lodash/some";
 import { action, observable } from "mobx";
 import type { EditorState, Selection } from "prosemirror-state";
 import { NodeSelection, Plugin, TextSelection } from "prosemirror-state";
@@ -86,9 +85,14 @@ export default class SelectionToolbarExtension extends Extension {
 
     const slice = selection.content();
     const fragment = slice.content;
-    const nodes = (fragment as any).content;
+    let containsContent = false;
+    fragment.forEach((node) => {
+      if (node.content.size) {
+        containsContent = true;
+      }
+    });
 
-    if (some(nodes, (n) => n.content.size)) {
+    if (containsContent) {
       return selection;
     }
 

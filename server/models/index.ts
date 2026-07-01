@@ -64,6 +64,10 @@ export { default as Team } from "./Team";
 
 export { default as TeamDomain } from "./TeamDomain";
 
+export { default as TableEditHistoryBatch } from "./TableEditHistoryBatch";
+
+export { default as TableEditHistoryOp } from "./TableEditHistoryOp";
+
 export { default as Template } from "./Template";
 
 export { default as User } from "./User";

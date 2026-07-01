@@ -56,6 +56,7 @@ export default class TableCell extends Node {
         rowspan: { default: 1 },
         alignment: { default: null },
         colwidth: { default: null },
+        cellId: { default: null },
         marks: {
           default: undefined,
         },

@@ -1,4 +1,5 @@
 import type { EditorState, Selection } from "prosemirror-state";
+import { HistoryIcon } from "outline-icons";
 import Suggestion from "~/editor/extensions/Suggestion";
 import { NodeSelection, TextSelection } from "prosemirror-state";
 import * as React from "react";
@@ -43,6 +44,7 @@ import FloatingToolbar from "./FloatingToolbar";
 import LinkEditor from "./LinkEditor";
 import ToolbarMenu from "./ToolbarMenu";
 import { isModKey } from "@shared/utils/keyboard";
+import { ensureSelectedTableCellHistoryContext } from "../extensions/TableCellHistory";
 
 type Props = {
   /** Whether the text direction is right-to-left */
@@ -274,6 +276,9 @@ export function SelectionToolbar(props: Props) {
 
     return false;
   })();
+  const tableCellHistoryEnabled =
+    editor.props.tableEditHistoryEnabled === true &&
+    !!editor.props.onOpenTableCellHistory;
 
   let items: MenuItem[] = [];
   let align: "center" | "start" | "end" = "center";
@@ -324,6 +329,27 @@ export function SelectionToolbar(props: Props) {
       dictionary,
       aiFormattingEnabled ? handleAIFormat : undefined
     );
+  }
+
+  if (
+    tableCellHistoryEnabled &&
+    activeToolbar === Toolbar.Menu &&
+    isInTableCellSelection
+  ) {
+    items = [
+      ...items,
+      { name: "separator" },
+      {
+        tooltip: "Cell history",
+        icon: <HistoryIcon />,
+        onClick: () => {
+          const context = ensureSelectedTableCellHistoryContext(view);
+          if (context) {
+            editor.props.onOpenTableCellHistory?.(context);
+          }
+        },
+      },
+    ];
   }
 
   // Some extensions may be disabled, remove corresponding items

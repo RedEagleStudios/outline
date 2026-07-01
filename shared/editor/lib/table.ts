@@ -6,6 +6,7 @@ import { readableColor } from "polished";
 
 export interface TableAttrs {
   layout: TableLayout | null;
+  tableId: string | null;
 }
 
 export interface CellAttrs {
@@ -13,6 +14,7 @@ export interface CellAttrs {
   rowspan: number;
   colwidth: number[] | null;
   alignment: "center" | "left" | "right" | null;
+  cellId: string | null;
   marks?: NodeAttrMark[];
 }
 
@@ -44,6 +46,7 @@ export function getCellAttrs(dom: HTMLElement | string): Attrs {
         : dom.style.textAlign === "right"
           ? "right"
           : null,
+    cellId: null,
     marks: dom.getAttribute("data-bgcolor")
       ? [
           {

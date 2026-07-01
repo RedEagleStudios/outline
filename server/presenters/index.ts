@@ -30,6 +30,10 @@ import presentShare from "./share";
 import presentStar from "./star";
 import presentSubscription from "./subscription";
 import presentTeam from "./team";
+import {
+  presentTableEditHistoryBatch,
+  presentTableEditHistoryOp,
+} from "./tableEditHistory";
 import presentTemplate from "./template";
 import presentUser from "./user";
 import presentView from "./view";
@@ -70,6 +74,8 @@ export {
   presentStar,
   presentSubscription,
   presentTeam,
+  presentTableEditHistoryBatch,
+  presentTableEditHistoryOp,
   presentTemplate,
   presentUser,
   presentView,

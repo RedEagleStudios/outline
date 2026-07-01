@@ -12,6 +12,31 @@ This file also records notable branch-level and fork-local development changes t
 
 ## Branch-Level Changes From `main`
 
+### Current Development: Table Edit History Backend Foundation
+
+**Files:**
+
+- `server/env.ts`
+- `server/models/TableEditHistoryBatch.ts`
+- `server/models/TableEditHistoryOp.ts`
+- `server/migrations/20260701000000-create-table-edit-history.js`
+- `server/routes/api/tableHistory/*`
+- `server/presenters/tableEditHistory.ts`
+
+**Rationale:**
+
+The fork is preparing append-only table edit history storage and read APIs for future table-change capture without changing document save/edit behavior.
+
+**Implementation Notes:**
+
+- `TABLE_EDIT_HISTORY_ENABLED` is a public feature flag and defaults to enabled.
+- History is stored in batch and operation tables with document/team/user foreign keys, table/cell/row/column identifiers, text/hash/attribute deltas, and JSONB metadata. Rich document content is intentionally not stored.
+- `tableHistory.list` and `tableHistory.info` are read-only, require authentication, authorize the parent document with `listRevisions`, and include actor display information before returning history.
+- `tableHistory.capture` records best-effort, client-reported `cell_update` entries for simple text edits when the feature flag is enabled. Entries are marked `client_unverified` and are not compliance/audit history.
+- The editor lazily assigns table, row, and cell IDs only while table edit history is enabled and the user is editing a table cell. IDs are not serialized into DOM/HTML/clipboard.
+- A cell history control appears in the table cell toolbar when the selected cell has stable IDs; it opens a read-only sidebar for old → new changes with the document name, cell label, actor name, and avatar.
+- Limitation: collection overview descriptions are not supported by table cell history. The feature is intentionally scoped to document bodies.
+
 ### Current Development: Editor Text Color and Size Marks
 
 **Files:**

@@ -54,6 +54,7 @@ import { TableView } from "./TableView";
 
 export type TableAttrs = {
   layout: TableLayout | null;
+  tableId: string | null;
 };
 
 export default class Table extends Node {
@@ -70,6 +71,9 @@ export default class Table extends Node {
       parseDOM: [{ tag: "table" }],
       attrs: {
         layout: {
+          default: null,
+        },
+        tableId: {
           default: null,
         },
       },

@@ -37,6 +37,7 @@ import DocumentTitle from "./DocumentTitle";
 import first from "lodash/first";
 import { getLangFor } from "~/utils/language";
 import useShare from "@shared/hooks/useShare";
+import env from "~/env";
 
 const extensions = withUIExtensions(withComments(richExtensions));
 
@@ -189,6 +190,26 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
     () => setEditorInitialized(false),
     [setEditorInitialized]
   );
+  const tableEditHistoryEnabled =
+    env.TABLE_EDIT_HISTORY_ENABLED === true ||
+    env.TABLE_EDIT_HISTORY_ENABLED === "true";
+  const handleOpenTableCellHistory = React.useCallback(
+    (context: {
+      tableId: string;
+      cellId: string;
+      rowId: string | null;
+      rowIndex: number | null;
+      columnIndex: number | null;
+    }) => {
+      ui.cellHistory = {
+        documentId: document.id,
+        sourceName: document.titleWithDefault,
+        ...context,
+      };
+      ui.set({ rightSidebar: "cellHistory" });
+    },
+    [document.id, document.titleWithDefault, ui]
+  );
 
   const direction = titleRef.current?.getComputedDirection();
 
@@ -237,6 +258,11 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
         placeholder={t("Type '/' to insert, or start writing…")}
         scrollTo={decodeURIComponentSafe(window.location.hash)}
         readOnly={readOnly}
+        documentId={document.id}
+        tableEditHistoryEnabled={tableEditHistoryEnabled}
+        onOpenTableCellHistory={
+          tableEditHistoryEnabled ? handleOpenTableCellHistory : undefined
+        }
         userId={user?.id}
         focusedCommentId={focusedComment?.id}
         onClickCommentMark={

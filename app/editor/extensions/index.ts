@@ -13,6 +13,7 @@ import PasteHandler from "~/editor/extensions/PasteHandler";
 import PreventTab from "~/editor/extensions/PreventTab";
 import SelectionToolbarExtension from "~/editor/extensions/SelectionToolbar";
 import SmartText from "~/editor/extensions/SmartText";
+import TableCellHistoryExtension from "~/editor/extensions/TableCellHistory";
 
 type Nodes = (typeof Node | typeof Mark | typeof Extension)[];
 
@@ -26,6 +27,7 @@ export const withUIExtensions = (nodes: Nodes) => [
   MentionMenuExtension,
   FindAndReplaceExtension,
   HoverPreviewsExtension,
+  TableCellHistoryExtension,
   SelectionToolbarExtension,
   DiagramsExtension,
   // Order these default key handlers last
