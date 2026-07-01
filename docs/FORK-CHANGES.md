@@ -12,30 +12,34 @@ This file also records notable branch-level and fork-local development changes t
 
 ## Branch-Level Changes From `main`
 
-### Current Development: Table Edit History Backend Foundation
+### Current Development: Excalidraw-in-Docs MVP
 
 **Files:**
 
-- `server/env.ts`
-- `server/models/TableEditHistoryBatch.ts`
-- `server/models/TableEditHistoryOp.ts`
-- `server/migrations/20260701000000-create-table-edit-history.js`
-- `server/routes/api/tableHistory/*`
-- `server/presenters/tableEditHistory.ts`
+- `shared/editor/nodes/Excalidraw.tsx`
+- `app/editor/components/ExcalidrawDialog.tsx`
+- `app/editor/components/ExcalidrawViewer.tsx`
+- `app/types/excalidraw.d.ts`
+- `shared/editor/nodes/index.ts`
+- `server/models/ExcalidrawDrawingRevision.ts`
+- `server/routes/api/excalidraw/*`
+- `server/presenters/excalidrawDrawingRevision.ts`
+- `server/migrations/20260701000000-create-excalidraw-drawing-revisions.js`
+- `package.json`
 
 **Rationale:**
 
-The fork is preparing append-only table edit history storage and read APIs for future table-change capture without changing document save/edit behavior.
+The fork adds first-class document-embedded Excalidraw drawings for teams that need lightweight diagrams inside knowledge base pages.
 
 **Implementation Notes:**
 
-- `TABLE_EDIT_HISTORY_ENABLED` is a public feature flag and defaults to enabled.
-- History is stored in batch and operation tables with document/team/user foreign keys, table/cell/row/column identifiers, text/hash/attribute deltas, and JSONB metadata. Rich document content is intentionally not stored.
-- `tableHistory.list` and `tableHistory.info` are read-only, require authentication, authorize the parent document with `listRevisions`, and include actor display information before returning history.
-- `tableHistory.capture` records best-effort, client-reported `cell_update` entries for simple text edits when the feature flag is enabled. Entries are marked `client_unverified` and are not compliance/audit history.
-- The editor lazily assigns table, row, and cell IDs only while table edit history is enabled and the user is editing a table cell. IDs are not serialized into DOM/HTML/clipboard.
-- A cell history control appears in the table cell toolbar when the selected cell has stable IDs; it opens a read-only sidebar for old → new changes with the document name, cell label, actor name, and avatar.
-- Limitation: collection overview descriptions are not supported by table cell history. The feature is intentionally scoped to document bodies.
+- Drawings are stored as immutable `excalidraw_drawing_revisions` rows scoped to a parent document and team; scene access is authorized through the parent document instead of generic attachment redirects.
+- Public shared document views may fetch drawing scenes by passing the document `shareId`; the API verifies the drawing revision belongs to the shared document before returning it.
+- The MVP rejects non-empty Excalidraw `files` maps, caps scene/element size, and stores only JSON scene data, so embedded image files are intentionally unsupported.
+- ProseMirror stores only small drawing pointers and fallback metadata in an atom `excalidraw` block; full scene JSON is not stored in `documents.content`.
+- Saving a drawing creates a new drawing revision and clients must update the mounted editor node through a normal editor transaction so document revisions capture pointer changes.
+- Markdown/plain-text fallback renders the drawing title when rich rendering is unavailable.
+- Viewer and editor surfaces now use clearer loading, empty, and error states, plus a taller modal canvas and edit-only affordances in document view.
 
 ### Current Development: Editor Text Color and Size Marks
 

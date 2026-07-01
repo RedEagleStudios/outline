@@ -28,6 +28,7 @@ import Dropdown from "./Dropdown";
 import DropdownDefinition from "./DropdownDefinition";
 import Embed from "./Embed";
 import Emoji from "./Emoji";
+import Excalidraw from "./Excalidraw";
 import HardBreak from "./HardBreak";
 import Heading from "./Heading";
 import HorizontalRule from "./HorizontalRule";
@@ -110,6 +111,7 @@ export const richExtensions: Nodes = [
   CodeFence,
   Blockquote,
   Embed,
+  Excalidraw,
   Attachment,
   Video,
   Notice,

@@ -10,6 +10,7 @@ import insertFiles from "@shared/editor/commands/insertFiles";
 import EditorContainer from "@shared/editor/components/Styles";
 import {
   AttachmentPreset,
+  type ProsemirrorData,
   TeamPreference,
   UserPreference,
 } from "@shared/types";
@@ -30,6 +31,18 @@ import lazyWithRetry from "~/utils/lazyWithRetry";
 import useShare from "@shared/hooks/useShare";
 
 const LazyLoadedEditor = lazyWithRetry(() => import("~/editor"));
+
+function containsExcalidrawNode(node: ProsemirrorData): boolean {
+  if (node.type === "excalidraw") {
+    return true;
+  }
+
+  return node.content?.some(containsExcalidrawNode) ?? false;
+}
+
+function isProsemirrorData(value: object): value is ProsemirrorData {
+  return "type" in value && typeof value.type === "string";
+}
 
 export type Props = Optional<
   EditorProps,
@@ -276,7 +289,12 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
   );
 
   const paragraphs = React.useMemo(() => {
-    if (props.readOnly && typeof props.value === "object") {
+    if (
+      props.readOnly &&
+      typeof props.value === "object" &&
+      isProsemirrorData(props.value) &&
+      !containsExcalidrawNode(props.value)
+    ) {
       return ProsemirrorHelper.getPlainParagraphs(props.value);
     }
     return undefined;

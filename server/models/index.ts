@@ -22,6 +22,8 @@ export { default as DropdownTemplate } from "./DropdownTemplate";
 
 export { default as Event } from "./Event";
 
+export { default as ExcalidrawDrawingRevision } from "./ExcalidrawDrawingRevision";
+
 export { default as ExternalGroup } from "./ExternalGroup";
 
 export { default as FileOperation } from "./FileOperation";
@@ -60,13 +62,13 @@ export { default as ShareSubscription } from "./ShareSubscription";
 
 export { default as Star } from "./Star";
 
-export { default as Team } from "./Team";
-
-export { default as TeamDomain } from "./TeamDomain";
-
 export { default as TableEditHistoryBatch } from "./TableEditHistoryBatch";
 
 export { default as TableEditHistoryOp } from "./TableEditHistoryOp";
+
+export { default as Team } from "./Team";
+
+export { default as TeamDomain } from "./TeamDomain";
 
 export { default as Template } from "./Template";
 

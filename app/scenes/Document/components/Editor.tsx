@@ -34,10 +34,11 @@ import { decodeURIComponentSafe } from "~/utils/urls";
 import MultiplayerEditor from "./AsyncMultiplayerEditor";
 import DocumentMeta from "./DocumentMeta";
 import DocumentTitle from "./DocumentTitle";
+import ExcalidrawDialog from "~/editor/components/ExcalidrawDialog";
+import ExcalidrawViewer from "~/editor/components/ExcalidrawViewer";
 import first from "lodash/first";
 import { getLangFor } from "~/utils/language";
 import useShare from "@shared/hooks/useShare";
-import env from "~/env";
 
 const extensions = withUIExtensions(withComments(richExtensions));
 
@@ -66,7 +67,7 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
   const match = useRouteMatch();
   const { setFocusedCommentId } = useDocumentContext();
   const focusedComment = useFocusedComment();
-  const { ui, comments } = useStores();
+  const { ui, comments, dialogs } = useStores();
   const user = useCurrentUser({ rejectOnEmpty: false });
   const team = useCurrentTeam({ rejectOnEmpty: false });
   const sidebarContext = useLocationSidebarContext();
@@ -190,25 +191,43 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
     () => setEditorInitialized(false),
     [setEditorInitialized]
   );
-  const tableEditHistoryEnabled =
-    env.TABLE_EDIT_HISTORY_ENABLED === true ||
-    env.TABLE_EDIT_HISTORY_ENABLED === "true";
-  const handleOpenTableCellHistory = React.useCallback(
-    (context: {
-      tableId: string;
-      cellId: string;
-      rowId: string | null;
-      rowIndex: number | null;
-      columnIndex: number | null;
-    }) => {
-      ui.cellHistory = {
-        documentId: document.id,
-        sourceName: document.titleWithDefault,
-        ...context,
-      };
-      ui.set({ rightSidebar: "cellHistory" });
+
+  const handleOpenExcalidraw = React.useCallback(
+    (options: Parameters<NonNullable<EditorProps["onOpenExcalidraw"]>>[0]) => {
+      dialogs.openModal({
+        title: options.node.attrs.title || "Excalidraw drawing",
+        width: "96vw",
+        height: "90vh",
+        hideHeader: true,
+        style: { padding: 0, overflow: "hidden" },
+        content: (
+          <ExcalidrawDialog
+            documentId={document.id}
+            node={options.node}
+            getPos={options.getPos}
+            view={options.view}
+            onClose={dialogs.closeAllModals}
+            onSaveDocument={() => props.onSave({ done: true })}
+          />
+        ),
+      });
     },
-    [document.id, document.titleWithDefault, ui]
+    [dialogs, document.id, props]
+  );
+
+  const renderExcalidraw = React.useCallback(
+    (options: Parameters<NonNullable<EditorProps["renderExcalidraw"]>>[0]) => (
+      <ExcalidrawViewer
+        node={options.node}
+        getPos={options.getPos}
+        view={options.view}
+        shareId={shareId}
+        onDoubleClick={options.onDoubleClick}
+        onRequestEdit={options.onRequestEdit}
+        isEditable={!shareId && options.isEditable}
+      />
+    ),
+    [shareId]
   );
 
   const direction = titleRef.current?.getComputedDirection();
@@ -258,12 +277,10 @@ function DocumentEditor(props: Props, ref: React.RefObject<any>) {
         placeholder={t("Type '/' to insert, or start writing…")}
         scrollTo={decodeURIComponentSafe(window.location.hash)}
         readOnly={readOnly}
-        documentId={document.id}
-        tableEditHistoryEnabled={tableEditHistoryEnabled}
-        onOpenTableCellHistory={
-          tableEditHistoryEnabled ? handleOpenTableCellHistory : undefined
-        }
         userId={user?.id}
+        documentId={document.id}
+        onOpenExcalidraw={handleOpenExcalidraw}
+        renderExcalidraw={renderExcalidraw}
         focusedCommentId={focusedComment?.id}
         onClickCommentMark={
           commentingEnabled && can.comment ? setFocusedCommentId : undefined

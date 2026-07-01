@@ -44,6 +44,7 @@ import EventEmitter from "@shared/utils/events";
 import type Document from "~/models/Document";
 import Flex from "~/components/Flex";
 import { PortalContext } from "~/components/Portal";
+import type { TableCellHistoryContext } from "~/editor/extensions/TableCellHistory";
 import type { Dictionary } from "~/hooks/useDictionary";
 import type { Properties } from "~/types";
 import Logger from "~/utils/Logger";
@@ -64,18 +65,23 @@ export type Props = {
   id?: string;
   /** The user id of the current user */
   userId?: string;
-  /** The document id, when editing a persisted document. */
+  /** The id of the document being edited, when available. */
   documentId?: string;
-  /** Whether best-effort table edit history is enabled. */
-  tableEditHistoryEnabled?: boolean;
-  /** Callback when cell history should be opened for a selected cell. */
-  onOpenTableCellHistory?: (context: {
-    tableId: string;
-    cellId: string;
-    rowId: string | null;
-    rowIndex: number | null;
-    columnIndex: number | null;
+  /** Callback to open the Excalidraw editor for a mounted node. */
+  onOpenExcalidraw?: (props: {
+    node: ProsemirrorNode;
+    getPos: () => number;
+    view: EditorView;
   }) => void;
+  /** Callback to render a view-only Excalidraw node. */
+  renderExcalidraw?: (props: {
+    node: ProsemirrorNode;
+    getPos: () => number;
+    view: EditorView;
+    onDoubleClick: React.MouseEventHandler<HTMLElement>;
+    onRequestEdit?: () => void;
+    isEditable: boolean;
+  }) => React.ReactNode;
   /** The editor content, should only be changed if you wish to reset the content */
   value?: string | ProsemirrorData | ProsemirrorNode;
   /** The initial editor content as a markdown string, JSON object, or ProsemirrorNode */
@@ -99,6 +105,10 @@ export type Props = {
   canUpdate?: boolean;
   /** If the editor should still allow commenting when it is readOnly */
   canComment?: boolean;
+  /** Whether table edit history capture and UI is enabled. */
+  tableEditHistoryEnabled?: boolean;
+  /** Callback to open table cell edit history for a selected cell. */
+  onOpenTableCellHistory?: (context: TableCellHistoryContext) => void;
   /** A dictionary of translated strings used in the editor */
   dictionary: Dictionary;
   /** The reading direction of the text content, if known */

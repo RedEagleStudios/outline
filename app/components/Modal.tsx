@@ -25,6 +25,7 @@ type Props = {
   style?: React.CSSProperties;
   width?: number | string;
   height?: number | string;
+  hideHeader?: boolean;
   onRequestClose: () => void;
 };
 
@@ -35,6 +36,7 @@ const Modal: React.FC<Props> = ({
   style,
   width,
   height,
+  hideHeader,
   onRequestClose,
 }: Props) => {
   const wasOpen = usePrevious(isOpen);
@@ -56,6 +58,7 @@ const Modal: React.FC<Props> = ({
           <VisuallyHidden.Root>{title}</VisuallyHidden.Root>
         </Dialog.Title>
         <StyledContent
+          onClick={onRequestClose}
           onEscapeKeyDown={onRequestClose}
           onPointerDownOutside={onRequestClose}
           aria-describedby={undefined}
@@ -63,7 +66,11 @@ const Modal: React.FC<Props> = ({
           {isMobile ? (
             <Mobile>
               <MobileContent>
-                <Centered onClick={(ev) => ev.stopPropagation()} column>
+                <Centered
+                  onClick={(ev) => ev.stopPropagation()}
+                  onPointerDown={(ev) => ev.stopPropagation()}
+                  column
+                >
                   {title && (
                     <Text size="xlarge" weight="bold">
                       {title}
@@ -84,16 +91,21 @@ const Modal: React.FC<Props> = ({
             <Wrapper $width={width} $height={height}>
               <Centered
                 onClick={(ev) => ev.stopPropagation()}
+                onPointerDown={(ev) => ev.stopPropagation()}
                 // maxHeight needed for proper overflow behavior in Safari
-                style={{ maxHeight: "65vh" }}
+                style={{
+                  maxHeight: height || "65vh",
+                  height: height ? "100%" : undefined,
+                  width: "100%",
+                }}
                 column
                 reverse
               >
                 <DesktopContent style={style} topShadow>
                   <ErrorBoundary component="div">{children}</ErrorBoundary>
                 </DesktopContent>
-                <Header>
-                  {title && <Text size="large">{title}</Text>}
+                <Header $hidden={hideHeader}>
+                  {!hideHeader && title && <Text size="large">{title}</Text>}
                   <Tooltip content={t("Close")} shortcut="Esc">
                     <NudeButton onClick={onRequestClose}>
                       <CloseIcon />
@@ -160,6 +172,12 @@ const MobileContent = styled(Scrollable)`
 
 const DesktopContent = styled(Scrollable)`
   padding: 8px 24px 24px;
+  width: 100%;
+  height: 100%;
+
+  > div {
+    height: 100%;
+  }
 `;
 
 const Centered = styled(Flex)`
@@ -210,13 +228,17 @@ const Back = styled(NudeButton)`
   `};
 `;
 
-const Header = styled(Flex)`
+const Header = styled(Flex)<{ $hidden?: boolean }>`
   color: ${s("textSecondary")};
   align-items: center;
-  justify-content: space-between;
+  justify-content: ${(props) => (props.$hidden ? "flex-end" : "space-between")};
   font-weight: 600;
-  padding: 24px 24px 12px;
+  padding: ${(props) => (props.$hidden ? "12px 12px 0" : "24px 24px 12px")};
   flex-shrink: 0;
+  position: ${(props) => (props.$hidden ? "absolute" : "static")};
+  top: ${(props) => (props.$hidden ? "0" : "auto")};
+  right: ${(props) => (props.$hidden ? "0" : "auto")};
+  z-index: ${(props) => (props.$hidden ? 3 : "auto")};
 `;
 
 const Wrapper = styled.div<{
@@ -225,10 +247,11 @@ const Wrapper = styled.div<{
 }>`
   animation: ${fadeAndScaleIn} 250ms ease;
 
-  margin: 25vh auto auto auto;
+  margin: ${(props) => (props.$height ? "5vh auto auto auto" : "25vh auto auto auto")};
   width: 75vw;
   min-width: 350px;
   max-width: ${(props) => props.$width || "450px"};
+  height: ${(props) => props.$height || "auto"};
   max-height: ${(props) => props.$height || "70vh"};
   z-index: ${depths.modal};
   display: flex;

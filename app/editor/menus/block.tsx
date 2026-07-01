@@ -153,6 +153,12 @@ export default function blockMenuItems(
       appendSpace: true,
     },
     {
+      name: "excalidraw",
+      title: "Excalidraw",
+      icon: <Img src="/images/excalidraw-favicon-32.png" alt="" />,
+      keywords: "drawing diagram whiteboard sketch",
+    },
+    {
       name: "blockquote",
       title: dictionary.quote,
       icon: <BlockQuoteIcon />,

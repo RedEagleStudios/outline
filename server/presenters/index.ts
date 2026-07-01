@@ -8,6 +8,7 @@ import presentDocument, { presentDocuments } from "./document";
 import presentDocumentInsight from "./documentInsight";
 import presentDropdownTemplate from "./dropdownTemplate";
 import presentEvent from "./event";
+import presentExcalidrawDrawingRevision from "./excalidrawDrawingRevision";
 import presentExternalGroup from "./externalGroup";
 import presentFileOperation from "./fileOperation";
 import presentGroup from "./group";
@@ -29,11 +30,11 @@ import presentSearchQuery from "./searchQuery";
 import presentShare from "./share";
 import presentStar from "./star";
 import presentSubscription from "./subscription";
-import presentTeam from "./team";
 import {
   presentTableEditHistoryBatch,
   presentTableEditHistoryOp,
 } from "./tableEditHistory";
+import presentTeam from "./team";
 import presentTemplate from "./template";
 import presentUser from "./user";
 import presentView from "./view";
@@ -51,6 +52,7 @@ export {
   presentDocumentInsight,
   presentDropdownTemplate,
   presentEvent,
+  presentExcalidrawDrawingRevision,
   presentExternalGroup,
   presentFileOperation,
   presentGroup,
@@ -73,9 +75,9 @@ export {
   presentShare,
   presentStar,
   presentSubscription,
-  presentTeam,
   presentTableEditHistoryBatch,
   presentTableEditHistoryOp,
+  presentTeam,
   presentTemplate,
   presentUser,
   presentView,

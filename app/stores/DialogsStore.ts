@@ -9,6 +9,7 @@ type DialogDefinition = {
   style?: React.CSSProperties;
   width?: number | string;
   height?: number | string;
+  hideHeader?: boolean;
   onClose?: () => void;
 };
 
@@ -53,6 +54,7 @@ export default class DialogsStore {
     style,
     width,
     height,
+    hideHeader,
     onClose,
   }: Omit<DialogDefinition, "isOpen"> & {
     id?: string;
@@ -72,6 +74,7 @@ export default class DialogsStore {
           style,
           width,
           height,
+          hideHeader,
           isOpen: true,
           onClose,
         });

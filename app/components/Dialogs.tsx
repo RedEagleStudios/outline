@@ -34,6 +34,7 @@ function Dialogs() {
           style={modal.style}
           width={modal.width}
           height={modal.height}
+          hideHeader={modal.hideHeader}
         >
           {modal.content}
         </Modal>
