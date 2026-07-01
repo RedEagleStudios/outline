@@ -267,14 +267,26 @@ export function SelectionToolbar(props: Props) {
     selection instanceof NodeSelection &&
     selection.node.type.name === "attachment";
   const isInTableCellSelection = (() => {
-    for (let depth = selection.$from.depth; depth > 0; depth--) {
-      const node = selection.$from.node(depth);
-      if (node.type.name === "td" || node.type.name === "th") {
-        return true;
+    for (const resolvedPos of [selection.$from, selection.$to]) {
+      for (let depth = resolvedPos.depth; depth > 0; depth--) {
+        const node = resolvedPos.node(depth);
+        if (node.type.name === "td" || node.type.name === "th") {
+          return true;
+        }
       }
     }
 
-    return false;
+    let found = false;
+    state.doc.nodesBetween(selection.from, selection.to, (node) => {
+      if (node.type.name === "td" || node.type.name === "th") {
+        found = true;
+        return false;
+      }
+
+      return !found;
+    });
+
+    return found;
   })();
   const tableCellHistoryEnabled =
     editor.props.tableEditHistoryEnabled === true &&
