@@ -144,13 +144,13 @@ export default class TableCell extends Node {
         key: new PluginKey("table-cell-attributes"),
         state: {
           init: (_, state) => createCellDecorations(state),
-          apply: (tr, pluginState, oldState, newState) => {
+          apply: (tr, pluginState, _oldState, newState) => {
             // Only recompute if document changed
             if (!tr.docChanged) {
               return pluginState;
             }
 
-            if (!transactionChangesTableStructure(tr, oldState)) {
+            if (!transactionChangesTableStructure(tr)) {
               return pluginState.map(tr.mapping, tr.doc);
             }
 

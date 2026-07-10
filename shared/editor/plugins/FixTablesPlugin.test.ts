@@ -2,11 +2,14 @@ import {
   createEditorState,
   createEditorStateWithSelection,
   doc,
+  heading,
+  p,
   table,
   td,
   th,
   tr,
 } from "@shared/test/editor";
+import { Plugin, PluginKey } from "prosemirror-state";
 import { FixTablesPlugin } from "./FixTablesPlugin";
 
 describe("FixTablesPlugin", () => {
@@ -35,8 +38,10 @@ describe("FixTablesPlugin", () => {
       const testDoc = doc(testTable);
       const state = createEditorState(testDoc, [new FixTablesPlugin()]);
 
-      // Simulate a transaction that triggers the plugin
-      const newState = state.apply(state.tr.insertText("x", 5));
+      // Change a table attribute to trigger structural table checks
+      const newState = state.apply(
+        state.tr.setNodeAttribute(0, "tableId", "table-1")
+      );
 
       const newTable = newState.doc.firstChild!;
 
@@ -121,8 +126,10 @@ describe("FixTablesPlugin", () => {
       const testDoc = doc(testTable);
       const state = createEditorState(testDoc, [new FixTablesPlugin()]);
 
-      // Simulate a transaction
-      const newState = state.apply(state.tr.insertText("x", 5));
+      // Change a table attribute to trigger structural table checks
+      const newState = state.apply(
+        state.tr.setNodeAttribute(0, "tableId", "table-1")
+      );
 
       const newTable = newState.doc.firstChild!;
 
@@ -155,8 +162,10 @@ describe("FixTablesPlugin", () => {
         new FixTablesPlugin(),
       ]);
 
-      // Simulate a transaction that modifies the document
-      const newState = state.apply(state.tr.insertText("x", 5));
+      // Change a table attribute to trigger structural table checks
+      const newState = state.apply(
+        state.tr.setNodeAttribute(0, "tableId", "table-1")
+      );
 
       // Check that colwidth is removed from all cells
       const newTable = newState.doc.firstChild!;
@@ -230,8 +239,10 @@ describe("FixTablesPlugin", () => {
       const testDoc = doc(testTable);
       const state = createEditorState(testDoc, [new FixTablesPlugin()]);
 
-      // Simulate a transaction
-      const newState = state.apply(state.tr.insertText("x", 5));
+      // Change a table attribute to trigger structural table checks
+      const newState = state.apply(
+        state.tr.setNodeAttribute(0, "tableId", "table-1")
+      );
 
       const newTable = newState.doc.firstChild!;
 
@@ -246,6 +257,59 @@ describe("FixTablesPlugin", () => {
   });
 
   describe("edge cases", () => {
+    it("handles an appended non-table attribute step outside the original document", () => {
+      const appendKey = new PluginKey("append-non-table-attribute");
+      let appendedAttrPos: number | undefined;
+      const appendAttributePlugin = new Plugin({
+        key: appendKey,
+        appendTransaction: (transactions, _oldState, newState) => {
+          if (
+            transactions.some((transaction) => transaction.getMeta(appendKey))
+          ) {
+            return null;
+          }
+
+          let headingPos: number | undefined;
+          newState.doc.descendants((node, pos) => {
+            if (headingPos === undefined && node.type.name === "heading") {
+              headingPos = pos;
+            }
+          });
+
+          if (headingPos === undefined) {
+            return null;
+          }
+
+          appendedAttrPos = headingPos;
+          return newState.tr
+            .setNodeAttribute(headingPos, "level", 2)
+            .setMeta(appendKey, true);
+        },
+      });
+      const state = createEditorState(doc(p("x")), [
+        appendAttributePlugin,
+        new FixTablesPlugin(),
+      ]);
+      const replacement = doc([
+        p("A much larger replacement paragraph"),
+        p("Another paragraph"),
+        heading("Appended attribute target"),
+      ]);
+
+      const applyReplacement = () =>
+        state.apply(
+          state.tr.replaceWith(0, state.doc.content.size, replacement.content)
+        );
+      let newState = state;
+
+      expect(() => {
+        newState = applyReplacement();
+      }).not.toThrow();
+
+      expect(appendedAttrPos).toBeGreaterThan(state.doc.content.size);
+      expect(newState.doc.lastChild?.attrs.level).toBe(2);
+    });
+
     it("should handle empty tables gracefully", () => {
       // Create minimal valid table
       const testTable = table([tr([td("")])]);
@@ -274,8 +338,10 @@ describe("FixTablesPlugin", () => {
       const testDoc = doc([table1, table2]);
       const state = createEditorState(testDoc, [new FixTablesPlugin()]);
 
-      // Insert text only in the first table - second table is unchanged
-      const newState = state.apply(state.tr.insertText("x", 5));
+      // Change an attribute only on the first table - second table is unchanged
+      const newState = state.apply(
+        state.tr.setNodeAttribute(0, "tableId", "table-1")
+      );
 
       // Check first table - fixed because it was modified
       const newTable1 = newState.doc.child(0);

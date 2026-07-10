@@ -27,7 +27,7 @@ export class FixTablesPlugin extends Plugin {
         } else if (oldState.doc !== state.doc) {
           if (
             !transactions.some((transaction) =>
-              transactionChangesTableStructure(transaction, oldState)
+              transactionChangesTableStructure(transaction)
             )
           ) {
             return null;

@@ -388,13 +388,13 @@ export default class TableHeader extends Node {
         key: new PluginKey("table-header-first-column"),
         state: {
           init: (_, state) => createHeaderDecorations(state),
-          apply: (tr, pluginState, oldState, newState) => {
+          apply: (tr, pluginState, _oldState, newState) => {
             // Only recompute if document changed
             if (!tr.docChanged) {
               return pluginState;
             }
 
-            if (!transactionChangesTableStructure(tr, oldState)) {
+            if (!transactionChangesTableStructure(tr)) {
               return pluginState.map(tr.mapping, tr.doc);
             }
 

@@ -33,7 +33,7 @@ export class TableLayoutPlugin extends Plugin {
         } else if (oldState.doc !== newState.doc) {
           if (
             !transactions.some((transaction) =>
-              transactionChangesTableStructure(transaction, oldState)
+              transactionChangesTableStructure(transaction)
             )
           ) {
             return null;

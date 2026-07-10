@@ -322,6 +322,7 @@ The branch reduces unnecessary editor decoration rebuilds and improves table beh
 - Preserve helper utilities that detect whether transactions touch table structure or relevant node types.
 - Table decoration optimizations are performance-oriented and should not be removed just because upstream code looks simpler.
 - `Tab` indents a non-empty text selection inside a single table cell before falling back to cell navigation for cursor and cell selections.
+- Table-structure detection inspects each transaction step against its recorded pre-step document, preventing stale-coordinate crashes when append-transaction plugins target content added earlier in the chain.
 
 ### 7. Webhook Payload Change Inclusion
 

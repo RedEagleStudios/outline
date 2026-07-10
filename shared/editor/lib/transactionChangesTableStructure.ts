@@ -1,5 +1,5 @@
 import type { Node as ProsemirrorNode } from "prosemirror-model";
-import type { EditorState, Transaction } from "prosemirror-state";
+import type { Transaction } from "prosemirror-state";
 
 const tableStructureNodeTypes = new Set(["table", "tr", "td", "th"]);
 
@@ -8,29 +8,31 @@ const tableStructureNodeTypes = new Set(["table", "tr", "td", "th"]);
  * content. Text edits inside cells can safely map existing table decorations.
  *
  * @param transaction the transaction to inspect.
- * @param oldState the editor state before the transaction.
  * @returns true if table, row, or cell structure may have changed.
  */
 export function transactionChangesTableStructure(
-  transaction: Transaction,
-  oldState: EditorState
+  transaction: Transaction
 ): boolean {
+  if (transaction.docs.length !== transaction.steps.length) {
+    return true;
+  }
+
   if (!transaction.docChanged) {
     return false;
   }
 
-  let currentDoc = oldState.doc;
-  for (const step of transaction.steps) {
-    const stepJSON = step.toJSON();
-    if (
-      containsTableStructureNode(stepJSON) ||
-      attrStepChangesTableStructure(stepJSON, currentDoc)
-    ) {
+  for (let stepIndex = 0; stepIndex < transaction.steps.length; stepIndex++) {
+    const step = transaction.steps[stepIndex];
+    const stepDoc = transaction.docs[stepIndex];
+    if (!step || !stepDoc) {
       return true;
     }
 
-    const nextDoc = step.apply(currentDoc).doc;
-    if (!nextDoc) {
+    const stepJSON = step.toJSON();
+    if (
+      containsTableStructureNode(stepJSON) ||
+      attrStepChangesTableStructure(stepJSON, stepDoc)
+    ) {
       return true;
     }
 
@@ -41,7 +43,7 @@ export function transactionChangesTableStructure(
       }
 
       deletedTableStructure = rangeContainsDeletedTableStructure(
-        currentDoc,
+        stepDoc,
         oldStart,
         oldEnd
       );
@@ -50,8 +52,6 @@ export function transactionChangesTableStructure(
     if (deletedTableStructure) {
       return true;
     }
-
-    currentDoc = nextDoc;
   }
 
   return false;
@@ -65,12 +65,20 @@ function attrStepChangesTableStructure(
     return false;
   }
 
-  const step = value as { stepType?: unknown; pos?: unknown };
-  if (step.stepType !== "attr" || typeof step.pos !== "number") {
+  if (
+    !("stepType" in value) ||
+    value.stepType !== "attr" ||
+    !("pos" in value) ||
+    typeof value.pos !== "number"
+  ) {
     return false;
   }
 
-  const node = doc.nodeAt(step.pos);
+  if (value.pos < 0 || value.pos > doc.content.size) {
+    return true;
+  }
+
+  const node = doc.nodeAt(value.pos);
   return node ? tableStructureNodeTypes.has(node.type.name) : false;
 }
 

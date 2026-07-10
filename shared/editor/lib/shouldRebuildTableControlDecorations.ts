@@ -21,7 +21,7 @@ export function shouldRebuildTableControlDecorations(
   oldState: EditorState,
   newState: EditorState
 ): boolean {
-  if (transactionChangesTableStructure(transaction, oldState)) {
+  if (transactionChangesTableStructure(transaction)) {
     return true;
   }
 
