@@ -12,6 +12,18 @@ This file also records notable branch-level and fork-local development changes t
 
 ## Branch-Level Changes From `main`
 
+### Browser-Local Heading Collapse State
+
+**Files:**
+
+- `shared/editor/nodes/Heading.ts`
+- `shared/editor/queries/findCollapsedNodes.ts`
+- `shared/editor/commands/splitHeading.ts`
+
+**Rationale and implementation notes:**
+
+Heading folding is a personal browser preference and must not alter collaborative document content. Headings default to expanded when no browser-local preference exists. Collapse state now lives in browser storage and position-targeted ProseMirror plugin metadata, so no fold boolean is represented in collaborative content or synchronized through Yjs. Legacy serialized `collapsed` data from server-side document content is accepted as an unknown attribute and ignored/dropped when ProseMirror loads the heading. Document-order duplicate keys keep matching headings independently foldable, and local fold decorations are reconciled after structural document changes so remotely inserted section content remains hidden.
+
 ### Current Development: Excalidraw-in-Docs MVP
 
 **Files:**

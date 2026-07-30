@@ -1,10 +1,20 @@
-import type { NodeType } from "prosemirror-model";
-import type { Command } from "prosemirror-state";
+import type { Node, NodeType } from "prosemirror-model";
+import type { Command, EditorState } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
 import { findBlockNodes } from "../queries/findChildren";
 import { findCollapsedNodes } from "../queries/findCollapsedNodes";
 
-export default function splitHeading(type: NodeType): Command {
+/**
+ * Splits a heading while respecting browser-local collapsed sections.
+ *
+ * @param type the heading node type.
+ * @param isCollapsed whether a heading at a document position is locally collapsed.
+ * @returns a ProseMirror command.
+ */
+export default function splitHeading(
+  type: NodeType,
+  isCollapsed: (state: EditorState, heading: Node, position: number) => boolean
+): Command {
   return (state, dispatch): boolean => {
     const { $from, from, $to, to } = state.selection;
 
@@ -13,10 +23,17 @@ export default function splitHeading(type: NodeType): Command {
       return false;
     }
 
+    if (!state.selection.empty) {
+      return false;
+    }
+
     // is the selection at the beginning of the node
     const startPos = $from.before() + 1;
     if (startPos === from) {
-      const collapsedNodes = findCollapsedNodes(state.doc);
+      const collapsedNodes = findCollapsedNodes(
+        state.doc,
+        (heading, position) => isCollapsed(state, heading, position)
+      );
       const allBlocks = findBlockNodes(state.doc);
       const previousBlock = allBlocks
         .filter((a) => a.pos + a.node.nodeSize < startPos)
@@ -30,7 +47,7 @@ export default function splitHeading(type: NodeType): Command {
         // Insert a new heading directly before this one
         const transaction = state.tr.insert(
           $from.before(),
-          type.create({ ...$from.parent.attrs, collapsed: false })
+          type.create({ level: $from.parent.attrs.level })
         );
 
         // Move the selection into the new heading node and make sure it's on screen
@@ -49,7 +66,7 @@ export default function splitHeading(type: NodeType): Command {
     }
 
     // If the heading isn't collapsed standard behavior applies
-    if (!$from.parent.attrs.collapsed) {
+    if (!isCollapsed(state, $from.parent, $from.before())) {
       return false;
     }
 
@@ -59,7 +76,10 @@ export default function splitHeading(type: NodeType): Command {
     if (endPos === to) {
       // Find the next visible block after this one. It takes into account nested
       // collapsed headings and reaching the end of the document
-      const collapsedNodes = findCollapsedNodes(state.doc);
+      const collapsedNodes = findCollapsedNodes(
+        state.doc,
+        (heading, position) => isCollapsed(state, heading, position)
+      );
       const allBlocks = findBlockNodes(state.doc);
       const visibleBlocks = allBlocks.filter(
         (a) => !collapsedNodes.find((b) => b.pos === a.pos)
@@ -72,7 +92,7 @@ export default function splitHeading(type: NodeType): Command {
       // Insert a new heading directly before the next visible block
       const transaction = state.tr.insert(
         pos,
-        type.create({ ...$from.parent.attrs, collapsed: false })
+        type.create({ level: $from.parent.attrs.level })
       );
 
       // Move the selection into the new heading node and make sure it's on screen

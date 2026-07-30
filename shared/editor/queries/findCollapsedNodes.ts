@@ -2,7 +2,17 @@ import type { Node } from "prosemirror-model";
 import type { NodeWithPos } from "../types";
 import { findBlockNodes } from "./findChildren";
 
-export function findCollapsedNodes(doc: Node): NodeWithPos[] {
+/**
+ * Finds block nodes hidden by collapsed heading sections.
+ *
+ * @param doc the document to search.
+ * @param isCollapsed whether a heading at a document position is locally collapsed.
+ * @returns the block nodes hidden by collapsed headings.
+ */
+export function findCollapsedNodes(
+  doc: Node,
+  isCollapsed: (heading: Node, position: number) => boolean
+): NodeWithPos[] {
   const blocks = findBlockNodes(doc);
   const nodes: NodeWithPos[] = [];
 
@@ -15,7 +25,7 @@ export function findCollapsedNodes(doc: Node): NodeWithPos[] {
         collapsedStack.pop();
 
         // if the block is a heading and it is collapsed, push it to the stack
-        if (block.node.attrs.collapsed) {
+        if (isCollapsed(block.node, block.pos)) {
           collapsedStack.push(block.node.attrs.level);
         }
       } else {
@@ -23,7 +33,10 @@ export function findCollapsedNodes(doc: Node): NodeWithPos[] {
         nodes.push(block);
       }
     } else {
-      if (block.node.type.name === "heading" && block.node.attrs.collapsed) {
+      if (
+        block.node.type.name === "heading" &&
+        isCollapsed(block.node, block.pos)
+      ) {
         collapsedStack.push(block.node.attrs.level);
       }
     }
