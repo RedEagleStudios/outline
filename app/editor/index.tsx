@@ -59,6 +59,7 @@ import type { LightboxImage } from "@shared/editor/lib/Lightbox";
 import { LightboxImageFactory } from "@shared/editor/lib/Lightbox";
 import Lightbox from "~/components/Lightbox";
 import { anchorPlugin } from "@shared/editor/plugins/AnchorPlugin";
+import { ViewportResourceBudgetProvider } from "@shared/editor/components/hooks/viewportResourceBudgetContext";
 
 export type Props = {
   /** An optional identifier for the editor context. It is used to persist local settings */
@@ -182,6 +183,8 @@ export type Props = {
   userPreferences?: UserPreferences | null;
   /** Whether embeds should be rendered without an iframe */
   embedsDisabled?: boolean;
+  /** Whether generic iframe embeds should use viewport resource gating. */
+  viewportGatedEmbeds?: boolean;
   className?: string;
   /** Optional style overrides for the container*/
   style?: React.CSSProperties;
@@ -279,6 +282,15 @@ export class Editor extends React.PureComponent<
   }
 
   public componentDidUpdate(prevProps: Props) {
+    if (
+      prevProps.viewportGatedEmbeds === true &&
+      this.props.viewportGatedEmbeds !== true
+    ) {
+      Array.from(this.renderers).forEach((view) =>
+        view.setProp("viewportGating", false)
+      );
+    }
+
     // Allow changes to the 'value' prop to update the editor from outside
     if (this.props.value && prevProps.value !== this.props.value) {
       const newState = this.createState(this.props.value);
@@ -903,57 +915,61 @@ export class Editor extends React.PureComponent<
     const { isRTL } = this.state;
 
     return (
-      <PortalContext.Provider value={this.wrapperRef.current}>
-        <EditorContext.Provider value={this}>
-          <Flex
-            ref={this.wrapperRef}
-            onKeyDown={onKeyDown}
-            style={style}
-            className={className}
-            align="flex-start"
-            justify="center"
-            column
-          >
-            <EditorContainer
-              $rtl={isRTL}
-              grow={grow}
-              readOnly={readOnly}
-              readOnlyWriteCheckboxes={canUpdate}
-              focusedCommentId={this.props.focusedCommentId}
-              userId={this.props.userId}
-              editorStyle={this.props.editorStyle}
-              commenting={!!this.props.onClickCommentMark}
-              ref={this.elementRef}
-              lang={this.props.lang ?? ""}
-            />
+      <ViewportResourceBudgetProvider
+        enabled={!!this.props.viewportGatedEmbeds}
+      >
+        <PortalContext.Provider value={this.wrapperRef.current}>
+          <EditorContext.Provider value={this}>
+            <Flex
+              ref={this.wrapperRef}
+              onKeyDown={onKeyDown}
+              style={style}
+              className={className}
+              align="flex-start"
+              justify="center"
+              column
+            >
+              <EditorContainer
+                $rtl={isRTL}
+                grow={grow}
+                readOnly={readOnly}
+                readOnlyWriteCheckboxes={canUpdate}
+                focusedCommentId={this.props.focusedCommentId}
+                userId={this.props.userId}
+                editorStyle={this.props.editorStyle}
+                commenting={!!this.props.onClickCommentMark}
+                ref={this.elementRef}
+                lang={this.props.lang ?? ""}
+              />
 
-            {this.widgets &&
-              !this.props.cacheOnly &&
-              Object.values(this.widgets).map((Widget, index) => (
-                <Widget
-                  key={String(index)}
-                  rtl={isRTL}
-                  readOnly={readOnly}
-                  selection={this.view.state.selection}
-                />
-              ))}
-            <Observer>
-              {() => (
-                <>{Array.from(this.renderers).map((view) => view.content)}</>
-              )}
-            </Observer>
-          </Flex>
-          {!isNull(this.state.activeLightboxImage) && (
-            <Lightbox
-              readOnly={readOnly}
-              images={this.getLightboxImages()}
-              activeImage={this.state.activeLightboxImage}
-              onUpdate={this.updateActiveLightboxImage}
-              onClose={this.view.focus.bind(this.view)}
-            />
-          )}
-        </EditorContext.Provider>
-      </PortalContext.Provider>
+              {this.widgets &&
+                !this.props.cacheOnly &&
+                Object.values(this.widgets).map((Widget, index) => (
+                  <Widget
+                    key={String(index)}
+                    rtl={isRTL}
+                    readOnly={readOnly}
+                    selection={this.view.state.selection}
+                  />
+                ))}
+              <Observer>
+                {() => (
+                  <>{Array.from(this.renderers).map((view) => view.content)}</>
+                )}
+              </Observer>
+            </Flex>
+            {!isNull(this.state.activeLightboxImage) && (
+              <Lightbox
+                readOnly={readOnly}
+                images={this.getLightboxImages()}
+                activeImage={this.state.activeLightboxImage}
+                onUpdate={this.updateActiveLightboxImage}
+                onClose={this.view.focus.bind(this.view)}
+              />
+            )}
+          </EditorContext.Provider>
+        </PortalContext.Provider>
+      </ViewportResourceBudgetProvider>
     );
   }
 }

@@ -1,10 +1,11 @@
 import { OpenIcon } from "outline-icons";
 import * as React from "react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect } from "react";
 import styled from "styled-components";
 import type { Optional } from "utility-types";
 import { s } from "../../styles";
 import { sanitizeUrl } from "../../utils/urls";
+import { useViewportLifecycle } from "./hooks/useViewportLifecycle";
 
 type Props = Omit<
   Optional<React.ComponentProps<typeof Iframe>>,
@@ -22,6 +23,10 @@ type Props = Omit<
   canonicalUrl?: string;
   /** Whether the node is currently selected */
   isSelected?: boolean;
+  /** Whether the node is currently being resized */
+  isResizing?: boolean;
+  /** Whether to gate iframe mounting by proximity to the viewport */
+  viewportGating?: boolean;
   /** Additional styling */
   style?: React.CSSProperties;
   /** The allow policy of the frame */
@@ -29,7 +34,7 @@ type Props = Omit<
 };
 
 type PropsWithRef = Props & {
-  forwardedRef: React.Ref<HTMLIFrameElement>;
+  forwardedRef: React.ForwardedRef<HTMLIFrameElement>;
 };
 
 const Frame = ({
@@ -40,36 +45,63 @@ const Frame = ({
   title,
   canonicalUrl,
   isSelected,
+  isResizing,
+  viewportGating = false,
   referrerPolicy,
   className = "",
   src,
+  onFocus,
   ...rest
 }: PropsWithRef) => {
   const [isLoaded, setIsLoaded] = useState(false);
-  const mountedRef = useRef(true);
+  const [hasMountedWhileGated, setHasMountedWhileGated] = useState(false);
+  const {
+    ref: lifecycleRef,
+    shouldMount,
+    pin,
+  } = useViewportLifecycle<HTMLDivElement>({
+    enabled: viewportGating,
+    selected: isSelected,
+    resizing: isResizing,
+  });
+
+  const handleFocus = React.useCallback(
+    (event: React.FocusEvent<HTMLIFrameElement>) => {
+      onFocus?.(event);
+      if (viewportGating) {
+        pin();
+      }
+    },
+    [onFocus, pin, viewportGating]
+  );
+
+  useLayoutEffect(() => {
+    if (viewportGating && shouldMount && !hasMountedWhileGated) {
+      setHasMountedWhileGated(true);
+    }
+  }, [hasMountedWhileGated, shouldMount, viewportGating]);
 
   useEffect(() => {
-    // Set mounted flag
-    mountedRef.current = true;
+    if (viewportGating || hasMountedWhileGated) {
+      return;
+    }
 
     // Load iframe after a small delay
     const timer = setTimeout(() => {
-      if (mountedRef.current) {
-        setIsLoaded(true);
-      }
+      setIsLoaded(true);
     }, 0);
 
     // Cleanup function
     return () => {
-      mountedRef.current = false;
       clearTimeout(timer);
     };
-  }, []);
+  }, [hasMountedWhileGated, viewportGating]);
 
   const showBottomBar = !!(icon || canonicalUrl);
 
   return (
     <Rounded
+      ref={lifecycleRef}
       style={style}
       $showBottomBar={showBottomBar}
       $border={border}
@@ -77,7 +109,7 @@ const Frame = ({
         isSelected ? `ProseMirror-selectednode ${className}` : className
       }
     >
-      {isLoaded && (
+      {(viewportGating ? shouldMount : isLoaded || hasMountedWhileGated) && (
         <Iframe
           ref={forwardedRef}
           $showBottomBar={showBottomBar}
@@ -87,6 +119,7 @@ const Frame = ({
           frameBorder="0"
           title="embed"
           loading="lazy"
+          onFocus={handleFocus}
           src={sanitizeUrl(src)}
           referrerPolicy={referrerPolicy}
           allowFullScreen

@@ -41,15 +41,30 @@ const uploadPlaceholder = new Plugin({
           element.className = "image placeholder";
 
           const img = document.createElement("img");
-          img.src =
-            action.add.src ||
-            (action.add.file ? URL.createObjectURL(action.add.file) : "");
+          const objectUrl = action.add.src
+            ? undefined
+            : action.add.file
+              ? URL.createObjectURL(action.add.file)
+              : undefined;
+          img.src = action.add.src || objectUrl || "";
           img.style.width = `${action.add.dimensions?.width}px`;
 
           element.appendChild(img);
 
           const deco = Decoration.widget(action.add.pos, element, {
             id: action.add.id,
+            destroy: objectUrl
+              ? (() => {
+                  let destroyed = false;
+                  return () => {
+                    if (destroyed) {
+                      return;
+                    }
+                    destroyed = true;
+                    URL.revokeObjectURL(objectUrl);
+                  };
+                })()
+              : undefined,
           });
           set = set.add(tr.doc, [deco]);
         } else if (action.add.isVideo) {
@@ -57,7 +72,8 @@ const uploadPlaceholder = new Plugin({
           element.className = "video placeholder";
 
           const video = document.createElement("video");
-          video.src = URL.createObjectURL(action.add.file);
+          const objectUrl = URL.createObjectURL(action.add.file);
+          video.src = objectUrl;
           video.autoplay = false;
           video.controls = false;
           video.width = action.add.dimensions?.width;
@@ -67,6 +83,16 @@ const uploadPlaceholder = new Plugin({
 
           const deco = Decoration.widget(action.add.pos, element, {
             id: action.add.id,
+            destroy: (() => {
+              let destroyed = false;
+              return () => {
+                if (destroyed) {
+                  return;
+                }
+                destroyed = true;
+                URL.revokeObjectURL(objectUrl);
+              };
+            })(),
           });
           set = set.add(tr.doc, [deco]);
         } else {
@@ -90,6 +116,16 @@ const uploadPlaceholder = new Plugin({
 
           const deco = Decoration.widget(action.add.pos, element, {
             id: action.add.id,
+            destroy: (() => {
+              let destroyed = false;
+              return () => {
+                if (destroyed) {
+                  return;
+                }
+                destroyed = true;
+                ReactDOM.unmountComponentAtNode(icon);
+              };
+            })(),
           });
           set = set.add(tr.doc, [deco]);
         }

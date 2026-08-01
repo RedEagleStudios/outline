@@ -74,14 +74,32 @@ export default class FileHelper {
   ): Promise<{ width: number; height: number }> {
     return new Promise((resolve, reject) => {
       const video = document.createElement("video");
+      const objectUrl = URL.createObjectURL(file);
+      let cleanedUp = false;
+      const cleanup = () => {
+        if (cleanedUp) {
+          return;
+        }
+        cleanedUp = true;
+        video.onloadedmetadata = null;
+        video.onerror = null;
+        URL.revokeObjectURL(objectUrl);
+      };
       video.preload = "metadata";
       video.crossOrigin = "anonymous";
       video.onloadedmetadata = () => {
-        window.URL.revokeObjectURL(video.src);
-        resolve({ width: video.videoWidth, height: video.videoHeight });
+        const dimensions = {
+          width: video.videoWidth,
+          height: video.videoHeight,
+        };
+        cleanup();
+        resolve(dimensions);
       };
-      video.onerror = reject;
-      video.src = URL.createObjectURL(file);
+      video.onerror = (event) => {
+        cleanup();
+        reject(event);
+      };
+      video.src = objectUrl;
     });
   }
 
@@ -149,13 +167,28 @@ export default class FileHelper {
 
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = function () {
-        window.URL.revokeObjectURL(img.src);
-        resolve({ width: img.width, height: img.height });
+      const objectUrl = URL.createObjectURL(file);
+      let cleanedUp = false;
+      const cleanup = () => {
+        if (cleanedUp) {
+          return;
+        }
+        cleanedUp = true;
+        img.onload = null;
+        img.onerror = null;
+        URL.revokeObjectURL(objectUrl);
+      };
+      img.onload = () => {
+        const dimensions = { width: img.width, height: img.height };
+        cleanup();
+        resolve(dimensions);
       };
 
-      img.onerror = reject;
-      img.src = URL.createObjectURL(file);
+      img.onerror = (event) => {
+        cleanup();
+        reject(event);
+      };
+      img.src = objectUrl;
     });
   }
 

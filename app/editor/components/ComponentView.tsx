@@ -40,6 +40,8 @@ export default class ComponentView {
   renderer: NodeViewRenderer<ComponentProps>;
   /** Whether the node is selected. */
   isSelected = false;
+  /** Viewport gating captured for this NodeView lifetime. */
+  viewportGating?: boolean;
   /** The DOM element that the node is rendered into. */
   dom: HTMLElement | null;
   /** The base class name for the node's DOM element. */
@@ -64,6 +66,7 @@ export default class ComponentView {
     this.decorations = decorations;
     this.node = node;
     this.view = view;
+    this.viewportGating = editor.props.viewportGatedEmbeds;
     this.dom = node.type.spec.inline
       ? document.createElement("span")
       : document.createElement("div");
@@ -96,7 +99,9 @@ export default class ComponentView {
     this.node = node;
     this.decorations = decorations;
     this.applyDecorationClasses();
-    this.renderer.updateProps(this.props);
+    const props = this.props;
+    props.viewportGating = this.renderer.props.viewportGating;
+    this.renderer.updateProps(props);
     return true;
   }
 
@@ -132,17 +137,19 @@ export default class ComponentView {
   }
 
   selectNode() {
-    if (this.view.editable) {
-      this.isSelected = true;
-      this.renderer.updateProps(this.props);
+    if (!this.view.editable || this.isSelected) {
+      return;
     }
+    this.isSelected = true;
+    this.renderer.setProp("isSelected", true);
   }
 
   deselectNode() {
-    if (this.view.editable) {
-      this.isSelected = false;
-      this.renderer.updateProps(this.props);
+    if (!this.view.editable || !this.isSelected) {
+      return;
     }
+    this.isSelected = false;
+    this.renderer.setProp("isSelected", false);
   }
 
   stopEvent(event: Event) {
@@ -170,6 +177,7 @@ export default class ComponentView {
       isEditable: this.view.editable,
       getPos: this.getPos,
       decorations: this.decorations,
+      viewportGating: this.viewportGating,
     } as ComponentProps;
   }
 }

@@ -22,6 +22,8 @@ import {
   matchCollectionSlug as collectionSlug,
   trashPath,
   debugPath,
+  debugEditorStressPath,
+  debugFrameViewportPath,
 } from "~/utils/routeHelpers";
 import env from "~/env";
 
@@ -35,6 +37,8 @@ const Search = lazy(() => import("~/scenes/Search"));
 const Trash = lazy(() => import("~/scenes/Trash"));
 const Debug = lazy(() => import("~/scenes/Developer/Debug"));
 const Changesets = lazy(() => import("~/scenes/Developer/Changesets"));
+const EditorStress = lazy(() => import("~/scenes/Developer/EditorStress"));
+const FrameViewport = lazy(() => import("~/scenes/Developer/FrameViewport"));
 
 const RedirectDocument = ({
   match,
@@ -115,6 +119,20 @@ function AuthenticatedRoutes() {
             />
             <Route path={`/doc/${documentSlug}`} component={Document} />
             <Route exact path={`${searchPath()}/:query?`} component={Search} />
+            {env.isDevelopment && (
+              <Route
+                exact
+                path={debugEditorStressPath()}
+                component={EditorStress}
+              />
+            )}
+            {env.isDevelopment && (
+              <Route
+                exact
+                path={debugFrameViewportPath()}
+                component={FrameViewport}
+              />
+            )}
             {env.isDevelopment && (
               <Route exact path={debugPath()} component={Debug} />
             )}

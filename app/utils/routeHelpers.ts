@@ -35,6 +35,24 @@ export function debugChangesetsPath(): string {
   return "/debug/changesets";
 }
 
+/**
+ * Returns the development editor stress harness path.
+ *
+ * @returns development editor stress harness path.
+ */
+export function debugEditorStressPath(): string {
+  return "/debug/editor-stress";
+}
+
+/**
+ * Returns the development frame viewport fixture path.
+ *
+ * @returns development frame viewport fixture path.
+ */
+export function debugFrameViewportPath(): string {
+  return "/debug/frame-viewport";
+}
+
 export function settingsPath(...args: string[]): string {
   return "/settings" + (args.length > 0 ? `/${args.join("/")}` : "");
 }

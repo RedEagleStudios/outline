@@ -12,6 +12,34 @@ This file also records notable branch-level and fork-local development changes t
 
 ## Branch-Level Changes From `main`
 
+### Development Editor Stress Harness
+
+The authenticated development-only `/debug/editor-stress` route mounts the production low-level editor with a deterministic, structured in-memory QA fixture. It provides local profiling controls and structural/resource diagnostics. The harness itself creates no documents, persistence, or document-collaboration traffic; the authenticated application shell retains its normal network providers.
+
+### Dormant Frame Viewport Lifecycle Integration
+
+Generic iframe embeds can opt into the shared viewport lifecycle through an explicit `viewportGating` prop. The integration preserves the existing frame wrapper, dimensions, toolbar, borders, responsive behavior, and native lazy-loading hint while conditionally mounting only the iframe. It also keeps resize wrapper and iframe refs independently owned.
+
+This behavior is dormant and default-off: normal editor and production embed rendering pass no opt-in and retain the previous deferred iframe mount. It is enabled only by tests and the authenticated development-only `/debug/frame-viewport` fixture. The fixture uses deterministic same-origin health URLs, reports direct iframe load events and nested-wrapper geometry, and does not create documents, persistence, collaboration traffic, public assets, or API routes. There is no production enablement.
+
+Each enabled low-level Editor owns a `ViewportResourceBudget` with capacity 8, 100 ms admission dwell, 30-second cooling, FIFO waiting, cooling-LRU pressure eviction, and pinned bypass. Fresh confirmations are observer-batched. Exact lease/authorization/pending tokens enforce committed eviction ordering: revoke authorization, commit iframe removal, release the precise lease in a layout effect, then allow the synchronous replacement grant. Live gate disable preserves an existing iframe; re-enable affects only new or explicitly remounted NodeViews.
+
+Corrected Chromium 150 evidence ran five 100-Frame dwell/pressure sweeps and three fast sweeps. Synchronous DOM-method, MutationObserver reconstructed/live, and rAF maxima were all at most 8 with zero reconstruction divergence. Representative transfer order was `removeChild 8 → 7`, then `appendChild 7 → 8`; pin accounting satisfied `raw 4 = leased 3 + pinned 1`, and teardown returned all direct counts to zero. The actual Embed remained a separate scope and preserved identity across disable/re-enable. An earlier apparent peak of 9 was stale profiler WeakSet accounting after keyed fixture Reset, not a product defect.
+
+The default-off path creates no budget or viewport-work allocation and registers no observer, member, or lifecycle work; this does not mean literally zero React allocation. Hidden active/cooling preservation is unit-covered, but headless target activation did not create a genuinely hidden page, so browser proof remains required. Combined verification passed 16 suites and 174 tests plus TypeScript, Oxlint, Prettier, and diff checks.
+
+Production activation is not approved and nothing was deployed. Activation requires a typed server-backed TeamPreference defaulting false, an independent emergency false override, Embed-only emergency propagation, a team allowlist/canary, size-segmented telemetry, and manual real hidden/background-browser validation. The current emergency disable iterates all React NodeViews and is activation-only technical debt.
+
+### Large-Document Renderer Groundwork
+
+Large media/table documents avoid repeated dropdown-definition scans through a document-identity `WeakMap`. Temporary upload, dimension-probe, and image-download object URLs are deterministically revoked, legacy upload placeholder React roots are unmounted, and table NodeViews clean up animation frames and scroll listeners deterministically. Document image lazy loading was removed after worsening print readiness; images remain eager, and immediate print blanks also reproduce in the eager baseline.
+
+Initial table geometry now uses one shared rAF with prepare → read all tables → write all tables ordering. No ProseMirror document/DOM content is recycled. Exact alternating evidence measured warm p50 711.6 → 687.5 ms, warm p90 792.9 → 716.1 ms, forced style/layout 260.1 → 218.5 ms, and TableView CPU samples 268 → 29, with no cold regression and 59.37 FPS controlled scrolling. Verification passed 26 focused TableView tests across two shared projects and 56 relevant table tests.
+
+Representative production-scale QA documents contain multiple tables, hundreds of Dropdown NodeViews, and more than one hundred image attachments. In the measured shape, remembered “videos” were primarily ordinary Google Drive hyperlinks rather than loaded media, with few actual Embeds and no native video nodes.
+
+Clean isolation and a full clean-build verification are mandatory before rollout consideration, and no production performance gain is claimed from iframe gating for documents with few actual Embeds.
+
 ### Browser-Local Heading Collapse State
 
 **Files:**

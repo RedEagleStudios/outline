@@ -126,6 +126,7 @@ export default class Embed extends Node {
         {...props}
         embeds={embeds}
         embedsDisabled={embedsDisabled}
+        viewportGating={props.viewportGating}
         onChangeSize={this.handleChangeSize(props)}
       />
     );

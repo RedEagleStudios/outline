@@ -13,10 +13,12 @@ type Props = ComponentProps & {
   embedsDisabled?: boolean;
   style?: React.CSSProperties;
   onChangeSize?: (props: { width: number; height?: number }) => void;
+  /** Whether generic iframe embeds should use viewport resource gating. */
+  viewportGating?: boolean;
 };
 
 const Embed = (props: Props) => {
-  const ref = React.useRef<HTMLIFrameElement>(null);
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
   const { node, isEditable, embedsDisabled, onChangeSize } = props;
   const naturalWidth = 0;
   const naturalHeight = 400;
@@ -30,18 +32,18 @@ const Embed = (props: Props) => {
       naturalHeight,
       gridSnap: 5,
       onChangeSize,
-      ref,
+      ref: wrapperRef,
     }
   );
 
   React.useEffect(() => {
-    if (node.attrs.height && node.attrs.height !== height) {
+    if (node.attrs.height) {
       setSize({
         width: node.attrs.width,
         height: node.attrs.height,
       });
     }
-  }, [node.attrs.height]);
+  }, [node.attrs.height, node.attrs.width, setSize]);
 
   const style: React.CSSProperties = {
     width: width || "100%",
@@ -51,8 +53,8 @@ const Embed = (props: Props) => {
   };
 
   return (
-    <FrameWrapper ref={ref}>
-      <InnerEmbed ref={ref} style={style} {...props} />
+    <FrameWrapper ref={wrapperRef}>
+      <InnerEmbed style={style} {...props} dragging={dragging} />
       {isEditable && isResizable && (
         <>
           <ResizeBottom
@@ -65,67 +67,75 @@ const Embed = (props: Props) => {
   );
 };
 
-const InnerEmbed = React.forwardRef<HTMLIFrameElement, Props>(
-  function InnerEmbed_(
-    { isEditable, isSelected, node, embeds, embedsDisabled, style },
-    ref
-  ) {
-    const cache = React.useMemo(
-      () => getMatchingEmbed(embeds, node.attrs.href),
-      [embeds, node.attrs.href]
-    );
+interface InnerEmbedProps extends Props {
+  dragging: boolean;
+}
 
-    if (!cache) {
-      return null;
-    }
+const InnerEmbed = ({
+  isEditable,
+  isSelected,
+  node,
+  embeds,
+  embedsDisabled,
+  style,
+  viewportGating,
+  dragging,
+}: InnerEmbedProps) => {
+  const cache = React.useMemo(
+    () => getMatchingEmbed(embeds, node.attrs.href),
+    [embeds, node.attrs.href]
+  );
 
-    const { embed, matches } = cache;
-
-    if (embedsDisabled) {
-      return (
-        <DisabledEmbed
-          href={node.attrs.href}
-          embed={embed}
-          isEditable={isEditable}
-          isSelected={isSelected}
-        />
-      );
-    }
-
-    if (embed.transformMatch) {
-      const src = embed.transformMatch(matches);
-      return (
-        <Frame
-          ref={ref}
-          src={src}
-          style={style}
-          isSelected={isSelected}
-          canonicalUrl={embed.hideToolbar ? undefined : node.attrs.href}
-          title={embed.title}
-          referrerPolicy="strict-origin-when-cross-origin"
-          border
-        />
-      );
-    }
-
-    if ("component" in embed) {
-      return (
-        // @ts-expect-error Component type
-        <embed.component
-          ref={ref}
-          attrs={node.attrs}
-          style={style}
-          matches={matches}
-          isEditable={isEditable}
-          isSelected={isSelected}
-          embed={embed}
-        />
-      );
-    }
-
+  if (!cache) {
     return null;
   }
-);
+
+  const { embed, matches } = cache;
+
+  if (embedsDisabled) {
+    return (
+      <DisabledEmbed
+        href={node.attrs.href}
+        embed={embed}
+        isEditable={isEditable}
+        isSelected={isSelected}
+      />
+    );
+  }
+
+  if (embed.transformMatch) {
+    const src = embed.transformMatch(matches);
+    return (
+      <Frame
+        src={src}
+        style={style}
+        isSelected={isSelected}
+        isResizing={dragging}
+        viewportGating={viewportGating}
+        canonicalUrl={embed.hideToolbar ? undefined : node.attrs.href}
+        title={embed.title}
+        referrerPolicy="strict-origin-when-cross-origin"
+        border
+      />
+    );
+  }
+
+  if ("component" in embed) {
+    return (
+      // @ts-expect-error Component type
+      <embed.component
+        attrs={node.attrs}
+        style={style}
+        matches={matches}
+        isEditable={isEditable}
+        isSelected={isSelected}
+        embed={embed}
+      />
+    );
+  }
+
+  return null;
+};
 
 const FrameWrapper = styled.div`
   line-height: 0;

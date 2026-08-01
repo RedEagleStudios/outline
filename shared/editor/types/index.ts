@@ -57,6 +57,8 @@ export type ComponentProps = {
   isEditable: boolean;
   getPos: () => number;
   decorations: Decoration[];
+  /** Whether this NodeView opted into viewport resource gating at construction. */
+  viewportGating?: boolean;
 };
 
 export type NodeAttrMarkName =

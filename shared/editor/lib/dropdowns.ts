@@ -23,6 +23,10 @@ export interface DropdownAttrs {
 
 const dropdownDefinitionRegex = /^<!--\s*outline-dropdown\s+(\{.*\})\s*-->\s*$/;
 const dropdownIdRegex = /^[^\s}|]+$/;
+const documentDropdownDefinitions = new WeakMap<
+  ProsemirrorNode,
+  readonly DropdownDefinition[]
+>();
 
 export const defaultDropdownDefinition: DropdownDefinition = {
   id: "status",
@@ -118,6 +122,11 @@ export function getDropdownDefinition(
 export function getDocumentDropdownDefinitions(
   doc: ProsemirrorNode
 ): DropdownDefinition[] {
+  const cachedDefinitions = documentDropdownDefinitions.get(doc);
+  if (cachedDefinitions) {
+    return [...cachedDefinitions];
+  }
+
   const definitions: DropdownDefinition[] = [];
 
   doc.descendants((node) => {
@@ -128,7 +137,8 @@ export function getDocumentDropdownDefinitions(
     definitions.push(...getDropdownDefinitions([node.attrs]));
   });
 
-  return definitions;
+  documentDropdownDefinitions.set(doc, definitions);
+  return [...definitions];
 }
 
 /**

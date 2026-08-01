@@ -64,30 +64,35 @@ const parseTitleAttribute = (tokenTitle: string): TitleAttributes => {
 export const downloadImageNode = async (
   node: ProsemirrorNode,
   cache?: RequestCache
-) => {
+): Promise<void> => {
+  let imageURL: string | undefined;
+  let link: HTMLAnchorElement | undefined;
   try {
     const image = await fetch(node.attrs.src, {
       cache,
     });
     const imageBlob = await image.blob();
-    const imageURL = URL.createObjectURL(imageBlob);
+    imageURL = URL.createObjectURL(imageBlob);
     const extension = imageBlob.type.split(/\/|\+/g)[1];
     const potentialName = node.attrs.alt || "image";
 
     // create a temporary link node and click it with our image data
-    const link = document.createElement("a");
+    link = document.createElement("a");
     link.href = imageURL;
     link.download = `${potentialName}.${extension}`;
     document.body.appendChild(link);
     link.click();
-
-    // cleanup
-    document.body.removeChild(link);
   } catch {
     if (cache !== "reload") {
-      downloadImageNode(node, "reload");
+      return downloadImageNode(node, "reload");
     } else {
       window.open(sanitizeUrl(node.attrs.src), "_blank");
+    }
+  } finally {
+    link?.remove();
+    if (imageURL) {
+      const objectURL = imageURL;
+      setTimeout(() => URL.revokeObjectURL(objectURL), 250);
     }
   }
 };
