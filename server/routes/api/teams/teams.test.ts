@@ -42,42 +42,6 @@ describe("teams.create", () => {
 });
 
 describe("#team.update", () => {
-  it.each([true, false])(
-    "should update and present viewport-gated embeds as %s",
-    async (viewportGatedEmbeds) => {
-      const team = await buildTeam({
-        preferences: { viewportGatedEmbeds: !viewportGatedEmbeds },
-      });
-      const admin = await buildAdmin({ teamId: team.id });
-      const res = await server.post("/api/team.update", {
-        body: {
-          token: admin.getJwtToken(),
-          preferences: { viewportGatedEmbeds },
-        },
-      });
-      const body = await res.json();
-
-      expect(res.status).toEqual(200);
-      expect(body.data.preferences.viewportGatedEmbeds).toBe(
-        viewportGatedEmbeds
-      );
-      await team.reload();
-      expect(team.preferences?.viewportGatedEmbeds).toBe(viewportGatedEmbeds);
-    }
-  );
-
-  it("should reject a non-boolean viewport-gated embeds preference", async () => {
-    const admin = await buildAdmin();
-    const res = await server.post("/api/team.update", {
-      body: {
-        token: admin.getJwtToken(),
-        preferences: { viewportGatedEmbeds: "true" },
-      },
-    });
-
-    expect(res.status).toEqual(400);
-  });
-
   it("should update team details", async () => {
     const admin = await buildAdmin();
     const name = faker.company.name();

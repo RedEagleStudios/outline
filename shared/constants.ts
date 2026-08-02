@@ -38,7 +38,6 @@ export const TeamPreferenceDefaults: TeamPreferences = {
   [TeamPreference.MCP]: true,
   [TeamPreference.DisabledEmbeds]: [],
   [TeamPreference.SmartText]: true,
-  [TeamPreference.ViewportGatedEmbeds]: false,
 };
 
 export const UserPreferenceDefaults: UserPreferences = {

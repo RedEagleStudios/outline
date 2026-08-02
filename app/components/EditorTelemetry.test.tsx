@@ -14,7 +14,6 @@ interface LowLevelProbeProps {
 }
 
 const mockLowLevelProps: LowLevelProbeProps[] = [];
-let mockTeamEnabled: boolean | undefined = true;
 let mockShareId: string | undefined;
 
 jest.mock("react-merge-refs", () => ({ mergeRefs: () => () => undefined }));
@@ -24,7 +23,7 @@ jest.mock("~/env", () => ({
 }));
 jest.mock("~/hooks/useCurrentTeam", () => ({
   __esModule: true,
-  default: () => ({ getPreference: () => mockTeamEnabled }),
+  default: () => ({ getPreference: () => undefined }),
 }));
 jest.mock("~/hooks/useCurrentUser", () => ({
   __esModule: true,
@@ -82,7 +81,6 @@ describe("mounted Editor viewport telemetry", () => {
     document.body.appendChild(container);
     mockLowLevelProps.length = 0;
     env.VIEWPORT_GATED_EMBEDS_ENABLED = true;
-    mockTeamEnabled = true;
     mockShareId = undefined;
     jest.restoreAllMocks();
   });
@@ -118,17 +116,6 @@ describe("mounted Editor viewport telemetry", () => {
     expect(mockLowLevelProps.at(-1)?.viewportResourceMetrics).toBeDefined();
   });
 
-  it("emits exactly once for live disable", () => {
-    const track = jest.spyOn(Analytics, "track").mockImplementation();
-    render(true);
-    mockTeamEnabled = false;
-    render(true);
-    expect(track).toHaveBeenCalledTimes(1);
-    expect(track.mock.calls[0][2]).toEqual(
-      expect.objectContaining({ end_reason: "live_disable" })
-    );
-  });
-
   it("emits once on enabled unmount", () => {
     const track = jest.spyOn(Analytics, "track").mockImplementation();
     render(true);
@@ -157,15 +144,12 @@ describe("mounted Editor viewport telemetry", () => {
   });
 
   it.each([
-    ["global off", false, true, true, undefined],
-    ["team off", true, false, true, undefined],
-    ["team missing", true, undefined, true, undefined],
-    ["ineligible", true, true, false, undefined],
-    ["public share", true, true, true, "share-id"],
-  ])("records nothing when %s", (_name, global, team, eligible, shareId) => {
+    ["global off", false, true, undefined],
+    ["ineligible", true, false, undefined],
+    ["public share", true, true, "share-id"],
+  ])("records nothing when %s", (_name, global, eligible, shareId) => {
     const track = jest.spyOn(Analytics, "track").mockImplementation();
     env.VIEWPORT_GATED_EMBEDS_ENABLED = global;
-    mockTeamEnabled = team;
     mockShareId = shareId;
     render(eligible);
     expect(mockLowLevelProps.at(-1)?.viewportGatedEmbeds).toBe(false);
@@ -182,8 +166,6 @@ describe("mounted Editor viewport telemetry", () => {
     });
     render(true);
     expect(() => {
-      mockTeamEnabled = false;
-      render(true);
       act(() => {
         ReactDOM.unmountComponentAtNode(container);
       });

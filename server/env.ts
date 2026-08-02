@@ -798,7 +798,7 @@ export class Environment {
   );
 
   /**
-   * Whether viewport-gated embeds may be enabled for opted-in workspaces.
+   * Whether viewport-gated embeds are enabled for eligible editor surfaces.
    */
   @Public
   @IsBoolean()

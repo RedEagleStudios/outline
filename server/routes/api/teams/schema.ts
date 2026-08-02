@@ -70,8 +70,6 @@ export const TeamsUpdateSchema = BaseSchema.extend({
         mcp: z.boolean().optional(),
         /** List of disabled embed provider titles. */
         disabledEmbeds: z.array(z.string()).optional(),
-        /** Whether embeds may be activated based on their viewport position. */
-        viewportGatedEmbeds: z.boolean().optional(),
       })
       .optional(),
   }),

@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { TeamPreference } from "@shared/types";
 import { Team } from "@server/models";
 import {
   buildTeam,
@@ -8,23 +7,6 @@ import {
 } from "@server/test/factories";
 
 describe("Team", () => {
-  describe("getPreference", () => {
-    it("defaults viewport-gated embeds to false and persists an explicit value", async () => {
-      const team = await buildTeam({ preferences: {} });
-
-      expect(team.getPreference(TeamPreference.ViewportGatedEmbeds)).toBe(
-        false
-      );
-
-      team.setPreference(TeamPreference.ViewportGatedEmbeds, true);
-      await team.save();
-      await team.reload();
-
-      expect(team.preferences?.viewportGatedEmbeds).toBe(true);
-      expect(team.getPreference(TeamPreference.ViewportGatedEmbeds)).toBe(true);
-    });
-  });
-
   describe("findByDomain", () => {
     it("should find a team by its domain", async () => {
       const domain = `${randomUUID()}.example.com`;

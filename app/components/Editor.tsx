@@ -66,7 +66,7 @@ export type Props = Optional<
   editorStyle?: React.CSSProperties;
   /**
    * Whether this editor is the primary current-document surface and is eligible
-   * for viewport-gated embeds when both operational controls are enabled.
+   * for viewport-gated embeds when the global control is enabled.
    */
   viewportGatingEligible?: boolean;
 };
@@ -91,7 +91,6 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
   const viewportGatedEmbeds = shouldEnableViewportGatedEmbeds(
     viewportGatingEligible,
     env.VIEWPORT_GATED_EMBEDS_ENABLED,
-    team?.getPreference(TeamPreference.ViewportGatedEmbeds) === true,
     shareId
   );
   const viewportMetrics = React.useMemo(
