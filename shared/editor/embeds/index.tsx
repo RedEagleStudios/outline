@@ -22,15 +22,28 @@ import Vimeo from "./Vimeo";
 import YouTube from "./YouTube";
 import PlantUmlDiagrams from "./PlantUml";
 
-export type EmbedProps = {
+/** Runtime and descriptor properties passed to custom embed components. */
+export interface EmbedProps {
+  /** Whether the embed NodeView is currently selected. */
   isSelected: boolean;
+  /** Whether the editor permits editing. */
   isEditable: boolean;
+  /** The descriptor matched for this embed. */
   embed: EmbedDescriptor;
+  /** The regular expression matches for the embedded URL. */
   matches: RegExpMatchArray;
+  /** The persisted attributes of the embed node. */
   attrs: {
+    /** The canonical URL persisted on the embed node. */
     href: string;
   };
-};
+  /** Runtime dimensions and interaction styling for the embed frame. */
+  style?: React.CSSProperties;
+  /** Whether iframe resources should be gated by viewport visibility. */
+  viewportGating?: boolean;
+  /** Whether the embed is currently being resized. */
+  isResizing?: boolean;
+}
 
 const Img = styled(Image)<{ $invertable?: boolean }>`
   border-radius: 3px;

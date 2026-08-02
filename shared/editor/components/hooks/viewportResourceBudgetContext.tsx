@@ -1,5 +1,6 @@
 import * as React from "react";
 import { ViewportResourceBudget } from "./viewportResourceBudget";
+import type { ViewportResourceMetricsCollector } from "./viewportResourceMetrics";
 
 export interface ViewportResourceBudgetProviderProps {
   /** Child tree that may consume the viewport resource budget. */
@@ -8,11 +9,18 @@ export interface ViewportResourceBudgetProviderProps {
   enabled: boolean;
   /** Internal capacity override used by focused tests. */
   capacity?: number;
+  /** Optional analytics-neutral collector for this enabled provider. */
+  collector?: ViewportResourceMetricsCollector;
 }
 
 /** React context containing the nearest enabled viewport resource budget. */
 export const ViewportResourceBudgetContext = React.createContext<
   ViewportResourceBudget | undefined
+>(undefined);
+
+/** React context containing metrics for the nearest enabled provider. */
+export const ViewportResourceMetricsContext = React.createContext<
+  ViewportResourceMetricsCollector | undefined
 >(undefined);
 
 /**
@@ -25,10 +33,14 @@ export function ViewportResourceBudgetProvider({
   children,
   enabled,
   capacity = ViewportResourceBudget.defaultCapacity,
+  collector,
 }: ViewportResourceBudgetProviderProps) {
   const budget = React.useMemo(
-    () => (enabled ? new ViewportResourceBudget(capacity) : undefined),
-    [capacity, enabled]
+    () =>
+      enabled
+        ? new ViewportResourceBudget(capacity, collector?.budgetObserver)
+        : undefined,
+    [capacity, collector, enabled]
   );
 
   React.useEffect(
@@ -39,10 +51,21 @@ export function ViewportResourceBudgetProvider({
   );
 
   return (
-    <ViewportResourceBudgetContext.Provider value={budget}>
-      {children}
-    </ViewportResourceBudgetContext.Provider>
+    <ViewportResourceMetricsContext.Provider
+      value={enabled ? collector : undefined}
+    >
+      <ViewportResourceBudgetContext.Provider value={budget}>
+        {children}
+      </ViewportResourceBudgetContext.Provider>
+    </ViewportResourceMetricsContext.Provider>
   );
+}
+
+/** Returns the collector supplied by the nearest enabled provider. */
+export function useViewportResourceMetrics():
+  | ViewportResourceMetricsCollector
+  | undefined {
+  return React.useContext(ViewportResourceMetricsContext);
 }
 
 /**

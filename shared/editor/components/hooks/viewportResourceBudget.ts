@@ -24,6 +24,24 @@ export interface ViewportResourceBudgetSnapshot {
   readonly pinned: number;
 }
 
+/** A state mutation reported by a viewport resource budget. */
+export type ViewportResourceBudgetMetric =
+  | "memberRegistered"
+  | "leaseRequested"
+  | "leaseGranted"
+  | "pressureEvictionRequested"
+  | "leaseReleased"
+  | "pinned";
+
+/** Analytics-neutral observer for viewport resource budget mutations. */
+export interface ViewportResourceBudgetObserver {
+  /** Receives a metric and a state-after-mutation snapshot. */
+  onEvent: (
+    metric: ViewportResourceBudgetMetric,
+    snapshot: ViewportResourceBudgetSnapshot
+  ) => void;
+}
+
 /** Handle for one member of a viewport resource budget. */
 export interface ViewportResourceBudgetMember {
   /** Requests a lease, granting it synchronously when capacity is available. */
@@ -91,13 +109,17 @@ export class ViewportResourceBudget {
   /** Maximum number of simultaneous unpinned leases. */
   public readonly capacity: number;
 
-  public constructor(capacity = ViewportResourceBudget.defaultCapacity) {
+  public constructor(
+    capacity = ViewportResourceBudget.defaultCapacity,
+    observer?: ViewportResourceBudgetObserver
+  ) {
     if (!Number.isInteger(capacity) || capacity <= 0) {
       throw new RangeError(
         "Viewport resource capacity must be a positive integer"
       );
     }
     this.capacity = capacity;
+    this.observer = observer;
   }
 
   /**
@@ -107,6 +129,12 @@ export class ViewportResourceBudget {
    * @returns a stable member handle.
    */
   public register(
+    callbacks: ViewportResourceBudgetCallbacks
+  ): ViewportResourceBudgetMember {
+    return this.mutate(() => this.registerMember(callbacks));
+  }
+
+  private registerMember(
     callbacks: ViewportResourceBudgetCallbacks
   ): ViewportResourceBudgetMember {
     const member: MemberState = {
@@ -122,15 +150,17 @@ export class ViewportResourceBudget {
     };
     if (!this.destroyed) {
       this.members.add(member);
+      this.report("memberRegistered");
     }
     return {
-      requestLease: () => this.requestLease(member),
-      cancelLeaseRequest: () => this.cancelLeaseRequest(member),
-      markActive: () => this.markActive(member),
-      markCooling: () => this.markCooling(member),
-      releaseLease: () => this.releaseLease(member),
-      pin: () => this.pin(member),
-      unregister: () => this.unregister(member),
+      requestLease: () => this.mutate(() => this.requestLease(member)),
+      cancelLeaseRequest: () =>
+        this.mutate(() => this.cancelLeaseRequest(member)),
+      markActive: () => this.mutate(() => this.markActive(member)),
+      markCooling: () => this.mutate(() => this.markCooling(member)),
+      releaseLease: () => this.mutate(() => this.releaseLease(member)),
+      pin: () => this.mutate(() => this.pin(member)),
+      unregister: () => this.mutate(() => this.unregister(member)),
     };
   }
 
@@ -160,12 +190,17 @@ export class ViewportResourceBudget {
 
   /** Cancels all eviction work and permanently disables this budget. */
   public destroy(): void {
+    this.mutate(() => this.destroyBudget());
+  }
+
+  private destroyBudget(): void {
     if (this.destroyed) {
       return;
     }
     this.destroyed = true;
     const deliveries: CallbackDelivery[] = [];
     for (const member of this.members) {
+      const hadLease = member.lease !== "none";
       if (member.evictionRequested) {
         member.evictionRequested = false;
         member.evictionVersion += 1;
@@ -180,6 +215,9 @@ export class ViewportResourceBudget {
       member.pinned = false;
       member.lease = "none";
       member.leaseVersion += 1;
+      if (hadLease) {
+        this.report("leaseReleased");
+      }
     }
     this.queue = [];
     this.members.clear();
@@ -190,6 +228,13 @@ export class ViewportResourceBudget {
   private queue: MemberState[] = [];
   private coolingSequence = 0;
   private destroyed = false;
+  private observer?: ViewportResourceBudgetObserver;
+  private mutationDepth = 0;
+  private deliveringMetrics = false;
+  private pendingMetrics: Array<{
+    metric: ViewportResourceBudgetMetric;
+    snapshot: ViewportResourceBudgetSnapshot;
+  }> = [];
 
   private requestLease(member: MemberState) {
     if (
@@ -202,6 +247,7 @@ export class ViewportResourceBudget {
     }
     member.queued = true;
     this.queue.push(member);
+    this.report("leaseRequested");
     this.reconcileAndDeliver();
   }
 
@@ -250,6 +296,7 @@ export class ViewportResourceBudget {
     member.lease = "none";
     member.leaseVersion += 1;
     member.evictionRequested = false;
+    this.report("leaseReleased");
     this.reconcileAndDeliver();
   }
 
@@ -267,6 +314,7 @@ export class ViewportResourceBudget {
         version: member.evictionVersion,
       });
     }
+    const hadLease = member.lease !== "none";
     member.pinned = true;
     if (member.queued) {
       member.queued = false;
@@ -274,6 +322,10 @@ export class ViewportResourceBudget {
     }
     member.lease = "none";
     member.leaseVersion += 1;
+    if (hadLease) {
+      this.report("leaseReleased");
+    }
+    this.report("pinned");
     this.reconcileAndDeliver(deliveries);
   }
 
@@ -291,6 +343,7 @@ export class ViewportResourceBudget {
         version: member.evictionVersion,
       });
     }
+    const hadLease = member.lease !== "none";
     member.registered = false;
     member.queued = false;
     member.pinned = false;
@@ -298,6 +351,9 @@ export class ViewportResourceBudget {
     member.leaseVersion += 1;
     this.members.delete(member);
     this.queue = this.queue.filter((candidate) => candidate !== member);
+    if (hadLease) {
+      this.report("leaseReleased");
+    }
     this.reconcileAndDeliver(deliveries);
   }
 
@@ -310,6 +366,7 @@ export class ViewportResourceBudget {
       member.queued = false;
       member.lease = "active";
       member.leaseVersion += 1;
+      this.report("leaseGranted");
       deliveries.push({
         kind: "leaseGranted",
         member,
@@ -338,6 +395,7 @@ export class ViewportResourceBudget {
       if (victims.has(member) && !member.evictionRequested) {
         member.evictionRequested = true;
         member.evictionVersion += 1;
+        this.report("pressureEvictionRequested");
         deliveries.push({
           kind: "evictionRequested",
           member,
@@ -394,5 +452,44 @@ export class ViewportResourceBudget {
       count += member.lease === "none" ? 0 : 1;
     }
     return count;
+  }
+
+  private report(metric: ViewportResourceBudgetMetric): void {
+    if (!this.observer) {
+      return;
+    }
+    this.pendingMetrics.push({ metric, snapshot: this.getSnapshot() });
+  }
+
+  private mutate<Result>(operation: () => Result): Result {
+    this.mutationDepth += 1;
+    try {
+      return operation();
+    } finally {
+      this.mutationDepth -= 1;
+      this.flushMetrics();
+    }
+  }
+
+  private flushMetrics(): void {
+    if (this.mutationDepth !== 0 || this.deliveringMetrics || !this.observer) {
+      return;
+    }
+    this.deliveringMetrics = true;
+    try {
+      while (this.pendingMetrics.length > 0) {
+        const record = this.pendingMetrics.shift();
+        if (!record) {
+          continue;
+        }
+        try {
+          this.observer.onEvent(record.metric, record.snapshot);
+        } catch (_error) {
+          // Metrics are best-effort and must not affect budget behavior.
+        }
+      }
+    } finally {
+      this.deliveringMetrics = false;
+    }
   }
 }

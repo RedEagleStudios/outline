@@ -3,10 +3,16 @@ import styled from "styled-components";
 import Frame from "../components/Frame";
 import type { EmbedProps as Props } from ".";
 
-function Spotify({ matches, ...props }: Props) {
+function Spotify({
+  attrs,
+  style,
+  isSelected,
+  isResizing,
+  viewportGating,
+}: Props) {
   let pathname = "";
   try {
-    const parsed = new URL(props.attrs.href);
+    const parsed = new URL(attrs.href);
     pathname = parsed.pathname;
   } catch (_err) {
     pathname = "";
@@ -25,7 +31,10 @@ function Spotify({ matches, ...props }: Props) {
 
   return (
     <SpotifyFrame
-      {...props}
+      style={style}
+      isSelected={isSelected}
+      isResizing={isResizing}
+      viewportGating={viewportGating}
       width="100%"
       height={`${height}px`}
       src={`https://open.spotify.com/embed${normalizedPath}`}

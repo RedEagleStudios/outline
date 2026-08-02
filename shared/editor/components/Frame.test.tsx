@@ -7,6 +7,7 @@ import Frame from "./Frame";
 import { ViewportResourceBudgetProvider } from "./hooks/viewportResourceBudgetContext";
 import { useViewportResourceBudget } from "./hooks/viewportResourceBudgetContext";
 import type { ViewportResourceBudget } from "./hooks/viewportResourceBudget";
+import { ViewportResourceMetricsCollector } from "./hooks/viewportResourceMetrics";
 
 class ObserverMock {
   static instances: ObserverMock[] = [];
@@ -69,10 +70,17 @@ describe("Frame", () => {
     }
   };
 
-  const renderBudgeted = (viewportGating: boolean) => {
+  const renderBudgeted = (
+    viewportGating: boolean,
+    collector?: ViewportResourceMetricsCollector
+  ) => {
     act(() => {
       ReactDOM.render(
-        <ViewportResourceBudgetProvider enabled capacity={1}>
+        <ViewportResourceBudgetProvider
+          enabled
+          capacity={1}
+          collector={collector}
+        >
           <Frame
             src="/_health?frame-continuity=1"
             viewportGating={viewportGating}
@@ -535,14 +543,23 @@ describe("Frame", () => {
   });
 
   it("keeps an active gated iframe through live disable", () => {
-    renderBudgeted(true);
+    const collector = new ViewportResourceMetricsCollector();
+    renderBudgeted(true, collector);
     emit(true);
     act(() => jest.advanceTimersByTime(100));
     const iframe = container.querySelector("iframe");
     expect(iframe).not.toBeNull();
 
-    renderBudgeted(false);
+    renderBudgeted(false, collector);
     expect(container.querySelector("iframe")).toBe(iframe);
+    expect(collector.finish()).toEqual(
+      expect.objectContaining({
+        maxFrameCandidates: 1,
+        gatedIframeEntries: 1,
+        gatedIframeExits: 1,
+        maxGatedIframes: 1,
+      })
+    );
     act(() => jest.advanceTimersByTime(0));
     expect(container.querySelector("iframe")).toBe(iframe);
   });

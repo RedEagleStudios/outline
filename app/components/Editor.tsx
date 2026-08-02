@@ -8,6 +8,7 @@ import { mergeRefs } from "react-merge-refs";
 import type { Optional } from "utility-types";
 import insertFiles from "@shared/editor/commands/insertFiles";
 import EditorContainer from "@shared/editor/components/Styles";
+import { ViewportResourceMetricsCollector } from "@shared/editor/components/hooks/viewportResourceMetrics";
 import {
   AttachmentPreset,
   type ProsemirrorData,
@@ -29,6 +30,12 @@ import useStores from "~/hooks/useStores";
 import { uploadFile, uploadFileFromUrl } from "~/utils/files";
 import lazyWithRetry from "~/utils/lazyWithRetry";
 import useShare from "@shared/hooks/useShare";
+import env from "~/env";
+import { shouldEnableViewportGatedEmbeds } from "./EditorPolicy";
+import {
+  trackViewportMetricsSummary,
+  type ViewportMetricsEndReason,
+} from "./EditorViewportMetrics";
 
 const LazyLoadedEditor = lazyWithRetry(() => import("~/editor"));
 
@@ -45,7 +52,7 @@ function isProsemirrorData(value: object): value is ProsemirrorData {
 }
 
 export type Props = Optional<
-  EditorProps,
+  Omit<EditorProps, "viewportGatedEmbeds" | "viewportResourceMetrics">,
   | "placeholder"
   | "defaultValue"
   | "onClickLink"
@@ -57,6 +64,11 @@ export type Props = Optional<
   onSynced?: () => Promise<void>;
   onPublish?: (event: React.MouseEvent) => void;
   editorStyle?: React.CSSProperties;
+  /**
+   * Whether this editor is the primary current-document surface and is eligible
+   * for viewport-gated embeds when both operational controls are enabled.
+   */
+  viewportGatingEligible?: boolean;
 };
 
 function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
@@ -75,6 +87,38 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
   const localRef = React.useRef<SharedEditor>();
   const userPreferences = useCurrentUser({ rejectOnEmpty: false })?.preferences;
   const team = useCurrentTeam({ rejectOnEmpty: false });
+  const { viewportGatingEligible, ...editorProps } = props;
+  const viewportGatedEmbeds = shouldEnableViewportGatedEmbeds(
+    viewportGatingEligible,
+    env.VIEWPORT_GATED_EMBEDS_ENABLED,
+    team?.getPreference(TeamPreference.ViewportGatedEmbeds) === true,
+    shareId
+  );
+  const viewportMetrics = React.useMemo(
+    () =>
+      viewportGatedEmbeds ? new ViewportResourceMetricsCollector() : undefined,
+    [viewportGatedEmbeds]
+  );
+  const viewportMetricsEnabled = React.useRef(viewportGatedEmbeds);
+  viewportMetricsEnabled.current = viewportGatedEmbeds;
+  React.useEffect(() => {
+    if (!viewportMetrics) {
+      return;
+    }
+    const startedAt = Date.now();
+    const flush = (reason: ViewportMetricsEndReason) => {
+      const summary = viewportMetrics.finish();
+      if (summary) {
+        trackViewportMetricsSummary(summary, reason, Date.now() - startedAt);
+      }
+    };
+    const handlePageHide = () => flush("pagehide");
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      flush(viewportMetricsEnabled.current ? "unmount" : "live_disable");
+    };
+  }, [viewportMetrics]);
   const teamSmartText = team?.getPreference(TeamPreference.SmartText, true);
   const preferences = React.useMemo(() => {
     if (teamSmartText === false && userPreferences) {
@@ -328,7 +372,7 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
             embeds={embeds}
             userPreferences={preferences}
             dictionary={dictionary}
-            {...props}
+            {...editorProps}
             onClickLink={handleClickLink}
             onChange={handleChange}
             onFileUploadStart={handleFileUploadStart}
@@ -336,6 +380,8 @@ function Editor(props: Props, ref: React.RefObject<SharedEditor> | null) {
             onFileUploadProgress={handleFileUploadProgress}
             placeholder={props.placeholder || ""}
             defaultValue={props.defaultValue || ""}
+            viewportGatedEmbeds={viewportGatedEmbeds}
+            viewportResourceMetrics={viewportMetrics}
           />
         )}
         {props.editorStyle?.paddingBottom && !props.readOnly && (

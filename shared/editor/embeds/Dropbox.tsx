@@ -2,7 +2,14 @@ import * as React from "react";
 import Frame from "../components/Frame";
 import type { EmbedProps as Props } from ".";
 
-function Dropbox({ matches, ...props }: Props) {
+function Dropbox({
+  attrs,
+  matches,
+  style,
+  isSelected,
+  isResizing,
+  viewportGating,
+}: Props) {
   // "fi" = file
   // "fo" = folder
   // Files need more vertical space to be readable
@@ -11,8 +18,12 @@ function Dropbox({ matches, ...props }: Props) {
   // Wrap inside an iframe to isolate external script and losened CSP
   return (
     <Frame
-      src={`/embeds/dropbox?url=${encodeURIComponent(props.attrs.href)}`}
-      className={props.isSelected ? "ProseMirror-selectednode" : ""}
+      src={`/embeds/dropbox?url=${encodeURIComponent(attrs.href)}`}
+      className={isSelected ? "ProseMirror-selectednode" : ""}
+      style={style}
+      isSelected={isSelected}
+      isResizing={isResizing}
+      viewportGating={viewportGating}
       width="100%"
       height={embedHeight}
       title="Dropbox"

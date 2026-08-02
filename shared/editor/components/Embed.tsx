@@ -120,15 +120,17 @@ const InnerEmbed = ({
     );
   }
 
-  if ("component" in embed) {
+  if (embed.component) {
+    const CustomEmbed = embed.component;
     return (
-      // @ts-expect-error Component type
-      <embed.component
-        attrs={node.attrs}
+      <CustomEmbed
+        attrs={{ href: node.attrs.href }}
         style={style}
         matches={matches}
         isEditable={isEditable}
         isSelected={isSelected}
+        isResizing={dragging}
+        viewportGating={viewportGating}
         embed={embed}
       />
     );

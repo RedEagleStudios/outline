@@ -3,14 +3,14 @@ import Frame from "../components/Frame";
 import type { EmbedProps as Props } from ".";
 
 function YouTube(
-  { matches, ...props }: Props,
+  { attrs, matches, style, isSelected, isResizing, viewportGating }: Props,
   ref: React.Ref<HTMLIFrameElement>
 ) {
   const videoId = matches[1];
 
   let src;
   try {
-    const url = new URL(props.attrs.href);
+    const url = new URL(attrs.href);
     const searchParams = new URLSearchParams(url.search);
     const start = searchParams.get("t")?.replace(/s$/, "");
 
@@ -33,7 +33,10 @@ function YouTube(
 
   return (
     <Frame
-      {...props}
+      style={style}
+      isSelected={isSelected}
+      isResizing={isResizing}
+      viewportGating={viewportGating}
       referrerPolicy="strict-origin-when-cross-origin"
       src={src}
       title={`YouTube (${videoId})`}

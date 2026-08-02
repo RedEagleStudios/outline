@@ -60,6 +60,7 @@ import { LightboxImageFactory } from "@shared/editor/lib/Lightbox";
 import Lightbox from "~/components/Lightbox";
 import { anchorPlugin } from "@shared/editor/plugins/AnchorPlugin";
 import { ViewportResourceBudgetProvider } from "@shared/editor/components/hooks/viewportResourceBudgetContext";
+import type { ViewportResourceMetricsCollector } from "@shared/editor/components/hooks/viewportResourceMetrics";
 
 export type Props = {
   /** An optional identifier for the editor context. It is used to persist local settings */
@@ -185,6 +186,8 @@ export type Props = {
   embedsDisabled?: boolean;
   /** Whether generic iframe embeds should use viewport resource gating. */
   viewportGatedEmbeds?: boolean;
+  /** Optional analytics-neutral collector for viewport-gated embed metrics. */
+  viewportResourceMetrics?: ViewportResourceMetricsCollector;
   className?: string;
   /** Optional style overrides for the container*/
   style?: React.CSSProperties;
@@ -283,18 +286,25 @@ export class Editor extends React.PureComponent<
 
   public componentDidUpdate(prevProps: Props) {
     if (
+      this.props.viewportResourceMetrics &&
+      this.props.viewportResourceMetrics !== prevProps.viewportResourceMetrics
+    ) {
+      this.observeDocumentSize(this.view.state);
+    }
+    if (
       prevProps.viewportGatedEmbeds === true &&
       this.props.viewportGatedEmbeds !== true
     ) {
-      Array.from(this.renderers).forEach((view) =>
-        view.setProp("viewportGating", false)
-      );
+      Array.from(this.renderers)
+        .filter((renderer) => renderer.props.node.type.name === "embed")
+        .forEach((renderer) => renderer.setProp("viewportGating", false));
     }
 
     // Allow changes to the 'value' prop to update the editor from outside
     if (this.props.value && prevProps.value !== this.props.value) {
       const newState = this.createState(this.props.value);
       this.view.updateState(newState);
+      this.observeDocumentSize(newState);
     }
 
     // When transitioning from readOnly to editable, reinitialize to create
@@ -305,6 +315,7 @@ export class Editor extends React.PureComponent<
       this.init();
       const newState = this.createState(docJSON);
       this.view.updateState(newState);
+      this.observeDocumentSize(newState);
     } else if (!prevProps.readOnly && this.props.readOnly) {
       // pass readOnly changes through to underlying editor instance
       this.view.update({
@@ -351,6 +362,12 @@ export class Editor extends React.PureComponent<
     this.handleEditorDestroy();
   }
 
+  private observeDocumentSize(state: EditorState): void {
+    this.props.viewportResourceMetrics?.observeDocumentSize(
+      state.doc.content.size
+    );
+  }
+
   private init() {
     this.extensions = this.createExtensions();
     this.nodes = this.createNodes();
@@ -375,6 +392,7 @@ export class Editor extends React.PureComponent<
     }
 
     this.view = this.createView();
+    this.observeDocumentSize(this.view.state);
     this.commands = this.createCommands();
   }
 
@@ -558,6 +576,9 @@ export class Editor extends React.PureComponent<
           this.state.applyTransaction(transaction);
 
         this.updateState(state);
+        if (transactions.some((tr) => tr.docChanged)) {
+          self.observeDocumentSize(state);
+        }
 
         // If any of the transactions being dispatched resulted in the doc
         // changing then call our own change handler to let the outside world
@@ -917,6 +938,7 @@ export class Editor extends React.PureComponent<
     return (
       <ViewportResourceBudgetProvider
         enabled={!!this.props.viewportGatedEmbeds}
+        collector={this.props.viewportResourceMetrics}
       >
         <PortalContext.Provider value={this.wrapperRef.current}>
           <EditorContext.Provider value={this}>

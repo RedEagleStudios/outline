@@ -4,9 +4,11 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
 import type { ViewportResourceBudget } from "./viewportResourceBudget";
+import { ViewportResourceMetricsCollector } from "./viewportResourceMetrics";
 import {
   ViewportResourceBudgetProvider,
   useViewportResourceBudget,
+  useViewportResourceMetrics,
 } from "./viewportResourceBudgetContext";
 
 interface ConsumerProps {
@@ -16,6 +18,17 @@ interface ConsumerProps {
 const Consumer = ({ onBudget }: ConsumerProps) => {
   const budget = useViewportResourceBudget();
   onBudget(budget);
+  return null;
+};
+
+const MetricsConsumer = ({
+  onCollector,
+}: {
+  onCollector: (
+    collector: ViewportResourceMetricsCollector | undefined
+  ) => void;
+}) => {
+  onCollector(useViewportResourceMetrics());
   return null;
 };
 
@@ -50,6 +63,34 @@ describe("ViewportResourceBudgetProvider", () => {
         container
       );
     });
+    expect(observed).toBeUndefined();
+  });
+
+  it("exposes metrics only while enabled", () => {
+    const collector = new ViewportResourceMetricsCollector();
+    let observed: ViewportResourceMetricsCollector | undefined;
+    const render = (enabled: boolean) => {
+      act(() => {
+        ReactDOM.render(
+          <ViewportResourceBudgetProvider
+            enabled={enabled}
+            collector={collector}
+          >
+            <MetricsConsumer
+              onCollector={(value) => {
+                observed = value;
+              }}
+            />
+          </ViewportResourceBudgetProvider>,
+          container
+        );
+      });
+    };
+    render(false);
+    expect(observed).toBeUndefined();
+    render(true);
+    expect(observed).toBe(collector);
+    render(false);
     expect(observed).toBeUndefined();
   });
 

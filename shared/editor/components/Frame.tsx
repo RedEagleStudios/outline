@@ -6,6 +6,7 @@ import type { Optional } from "utility-types";
 import { s } from "../../styles";
 import { sanitizeUrl } from "../../utils/urls";
 import { useViewportLifecycle } from "./hooks/useViewportLifecycle";
+import { useViewportResourceMetrics } from "./hooks/viewportResourceBudgetContext";
 
 type Props = Omit<
   Optional<React.ComponentProps<typeof Iframe>>,
@@ -55,6 +56,7 @@ const Frame = ({
 }: PropsWithRef) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasMountedWhileGated, setHasMountedWhileGated] = useState(false);
+  const metrics = useViewportResourceMetrics();
   const {
     ref: lifecycleRef,
     shouldMount,
@@ -80,6 +82,23 @@ const Frame = ({
       setHasMountedWhileGated(true);
     }
   }, [hasMountedWhileGated, shouldMount, viewportGating]);
+
+  useEffect(() => {
+    if (!viewportGating || !metrics) {
+      return;
+    }
+    metrics.recordFrameRegistered();
+    return () => metrics.recordFrameUnregistered();
+  }, [metrics, viewportGating]);
+
+  const iframeInGatedScope = viewportGating && shouldMount;
+  useEffect(() => {
+    if (!iframeInGatedScope || !metrics) {
+      return;
+    }
+    metrics.recordGatedIframeEntered();
+    return () => metrics.recordGatedIframeExited();
+  }, [iframeInGatedScope, metrics]);
 
   useEffect(() => {
     if (viewportGating || hasMountedWhileGated) {

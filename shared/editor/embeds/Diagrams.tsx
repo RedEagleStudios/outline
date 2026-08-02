@@ -3,8 +3,15 @@ import Frame from "../components/Frame";
 import Image from "../components/Img";
 import type { EmbedProps as Props } from ".";
 
-function Diagrams({ matches, ...props }: Props) {
-  const { embed } = props;
+function Diagrams({
+  attrs,
+  embed,
+  matches,
+  style,
+  isSelected,
+  isResizing,
+  viewportGating,
+}: Props) {
   const embedUrl = matches[0];
   const params = new URL(embedUrl).searchParams;
   const titlePrefix = embed.settings?.url ? "Draw.io" : "Diagrams.net";
@@ -14,8 +21,11 @@ function Diagrams({ matches, ...props }: Props) {
 
   return (
     <Frame
-      {...props}
-      src={props.attrs.href}
+      style={style}
+      isSelected={isSelected}
+      isResizing={isResizing}
+      viewportGating={viewportGating}
+      src={attrs.href}
       icon={
         <Image
           src="/images/diagrams.png"
@@ -24,7 +34,7 @@ function Diagrams({ matches, ...props }: Props) {
           height={16}
         />
       }
-      canonicalUrl={props.attrs.href}
+      canonicalUrl={attrs.href}
       title={title}
       border
     />

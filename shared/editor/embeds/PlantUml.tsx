@@ -4,15 +4,24 @@ import Image from "../components/Img";
 import type { EmbedProps as Props } from ".";
 import { useTheme } from "styled-components";
 
-function PlantUmlDiagrams({ matches, ...props }: Props) {
+function PlantUmlDiagrams({
+  attrs,
+  style,
+  isSelected,
+  isResizing,
+  viewportGating,
+}: Props) {
   const theme = useTheme();
   const mode = theme.isDark ? "dsvg" : "svg";
-  const title = props.attrs.href.split("/uml/")[1];
+  const title = attrs.href.split("/uml/")[1];
   const finalUrl = `https://www.plantuml.com/plantuml/${mode}/${title}`;
 
   return (
     <Frame
-      {...props}
+      style={style}
+      isSelected={isSelected}
+      isResizing={isResizing}
+      viewportGating={viewportGating}
       src={finalUrl}
       icon={
         <Image
@@ -22,7 +31,7 @@ function PlantUmlDiagrams({ matches, ...props }: Props) {
           height={16}
         />
       }
-      canonicalUrl={props.attrs.href}
+      canonicalUrl={attrs.href}
       border
     />
   );

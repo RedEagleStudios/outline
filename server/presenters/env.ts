@@ -18,5 +18,6 @@ export default function present(
       settings: integration?.settings,
     })),
     ...env.public,
+    VIEWPORT_GATED_EMBEDS_ENABLED: env.VIEWPORT_GATED_EMBEDS_ENABLED,
   };
 }

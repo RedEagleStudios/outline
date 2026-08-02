@@ -2,13 +2,22 @@ import * as React from "react";
 import Frame from "../components/Frame";
 import type { EmbedProps as Props } from ".";
 
-function Vimeo({ matches, ...props }: Props) {
+function Vimeo({
+  matches,
+  style,
+  isSelected,
+  isResizing,
+  viewportGating,
+}: Props) {
   const videoId = matches[4];
   const hId = matches[5];
 
   return (
     <Frame
-      {...props}
+      style={style}
+      isSelected={isSelected}
+      isResizing={isResizing}
+      viewportGating={viewportGating}
       src={`https://player.vimeo.com/video/${videoId}?byline=0${
         hId ? `&h=${hId}` : ""
       }`}

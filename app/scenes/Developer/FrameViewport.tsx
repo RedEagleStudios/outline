@@ -13,7 +13,7 @@ import {
   useViewportResourceBudget,
   ViewportResourceBudgetProvider,
 } from "@shared/editor/components/hooks/viewportResourceBudgetContext";
-import type { EmbedDescriptor } from "@shared/editor/embeds";
+import type { EmbedDescriptor, EmbedProps } from "@shared/editor/embeds";
 import { richExtensions } from "@shared/editor/nodes";
 import Heading from "~/components/Heading";
 import Scene from "~/components/Scene";
@@ -21,32 +21,116 @@ import Editor, { type Editor as EditorInstance } from "~/editor";
 import useDictionary from "~/hooks/useDictionary";
 
 const defaultFrameCount = 18;
+const mixedEmbedCount = 18;
 const fixtureMarker = "frame-viewport=";
-const canonicalEmbedHref = "https://frame-viewport.local/fixture/1";
+const genericCanonicalPrefix = "https://frame-viewport.local/fixture/generic/";
+const customCanonicalPrefix = "https://frame-viewport.local/fixture/custom/";
 const injectedInputId = "frame-viewport-injected-input";
 const injectedInputValue = "phase-b-fixed-value";
 
-const embedDescriptor: EmbedDescriptor = {
+const genericEmbedDescriptor: EmbedDescriptor = {
   id: "frame-viewport-fixture",
   title: "Frame viewport fixture",
-  regexMatch: [/^https:\/\/frame-viewport\.local\/fixture\/1$/],
-  transformMatch: () => "/_health?frame-viewport-embed=1",
+  regexMatch: [/^https:\/\/frame-viewport\.local\/fixture\/generic\/(\d+)$/],
+  transformMatch: (matches) =>
+    `/_health?frame-viewport-embed=generic-${matches[1] ?? "unknown"}`,
   matcher: (url) =>
-    url.match(/^https:\/\/frame-viewport\.local\/fixture\/1$/) || false,
+    url.match(/^https:\/\/frame-viewport\.local\/fixture\/generic\/(\d+)$/) ||
+    false,
 };
 
-const embedDocument = {
+function CustomFixtureEmbed({
+  attrs,
+  embed,
+  matches,
+  style,
+  isSelected,
+  isResizing,
+  viewportGating,
+}: EmbedProps) {
+  const index = matches[1] ?? "unknown";
+  return (
+    <Frame
+      src={`/_health?frame-viewport-embed=custom-${index}`}
+      style={style}
+      isSelected={isSelected}
+      isResizing={isResizing}
+      viewportGating={viewportGating}
+      canonicalUrl={attrs.href}
+      title={embed.title}
+      referrerPolicy="strict-origin-when-cross-origin"
+      border
+    />
+  );
+}
+
+const customEmbedDescriptor: EmbedDescriptor = {
+  id: "frame-viewport-custom-fixture",
+  title: "Frame viewport custom fixture",
+  regexMatch: [/^https:\/\/frame-viewport\.local\/fixture\/custom\/(\d+)$/],
+  component: CustomFixtureEmbed,
+  matcher: (url) =>
+    url.match(/^https:\/\/frame-viewport\.local\/fixture\/custom\/(\d+)$/) ||
+    false,
+};
+
+const genericEmbedDescriptors = [genericEmbedDescriptor];
+const customEmbedDescriptors = [customEmbedDescriptor];
+const mixedEmbedDescriptors = [genericEmbedDescriptor, customEmbedDescriptor];
+
+type EmbedMode = "generic" | "custom" | "mixed";
+
+const genericEmbedDocument = {
   type: "doc",
   content: [
     {
       type: "embed",
-      attrs: { href: canonicalEmbedHref },
+      attrs: { href: `${genericCanonicalPrefix}1` },
     },
     {
       type: "paragraph",
       content: [{ type: "text", text: "Selection target after the embed." }],
     },
   ],
+};
+
+const customEmbedDocument = {
+  type: "doc",
+  content: [
+    {
+      type: "embed",
+      attrs: { href: `${customCanonicalPrefix}1` },
+    },
+    {
+      type: "paragraph",
+      content: [{ type: "text", text: "Selection target after the embed." }],
+    },
+  ],
+};
+
+const mixedEmbedDocument = {
+  type: "doc",
+  content: Array.from({ length: mixedEmbedCount }, (_, offset) => {
+    const index = offset + 1;
+    const mode = index % 2 === 1 ? "generic" : "custom";
+    const prefix =
+      mode === "generic" ? genericCanonicalPrefix : customCanonicalPrefix;
+    return [
+      {
+        type: "embed",
+        attrs: { href: `${prefix}${index}` },
+      },
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            text: `Mixed ${mode} Embed ${index}`,
+          },
+        ],
+      },
+    ];
+  }).flat(),
 };
 
 interface FrameDiagnosticsState {
@@ -66,6 +150,15 @@ interface EmbedDiagnosticsState {
   iframeChanged: boolean;
   inputPresent: boolean;
   inputValue: string | null;
+  mixedIframeCount: number;
+  mixedGenericIframeCount: number;
+  mixedCustomIframeCount: number;
+}
+
+interface VisibilityDiagnosticsState {
+  status: "visible" | "hidden";
+  changeCount: number;
+  lastChangedAt: string | null;
 }
 
 const initialFrameDiagnostics: FrameDiagnosticsState = {
@@ -85,6 +178,9 @@ const initialEmbedDiagnostics: EmbedDiagnosticsState = {
   iframeChanged: false,
   inputPresent: false,
   inputValue: null,
+  mixedIframeCount: 0,
+  mixedGenericIframeCount: 0,
+  mixedCustomIframeCount: 0,
 };
 
 function DirectFrameBudgetDiagnostics() {
@@ -153,6 +249,7 @@ export function FrameViewport() {
   const previousIframeIdRef = useRef<number>();
   const lastIframeChangeRef = useRef(false);
   const [viewportGatedEmbeds, setViewportGatedEmbeds] = useState(true);
+  const [embedMode, setEmbedMode] = useState<EmbedMode>("generic");
   const [embedGeneration, setEmbedGeneration] = useState(0);
   const [frameCount, setFrameCount] = useState(defaultFrameCount);
   const [mounted, setMounted] = useState(true);
@@ -163,6 +260,15 @@ export function FrameViewport() {
     useState<FrameDiagnosticsState>(initialFrameDiagnostics);
   const [embedDiagnostics, setEmbedDiagnostics] =
     useState<EmbedDiagnosticsState>(initialEmbedDiagnostics);
+  const [visibilityDiagnostics, setVisibilityDiagnostics] =
+    useState<VisibilityDiagnosticsState>(() => ({
+      status:
+        typeof document !== "undefined" && document.visibilityState === "hidden"
+          ? "hidden"
+          : "visible",
+      changeCount: 0,
+      lastChangedAt: null,
+    }));
 
   const getEmbedIframe = useCallback(
     () => editorSurfaceRef.current?.querySelector("iframe") ?? null,
@@ -216,7 +322,10 @@ export function FrameViewport() {
     );
 
     const instance = editorRef.current;
-    const iframe = getEmbedIframe();
+    const embedIframes = Array.from(
+      editorSurfaceRef.current?.querySelectorAll("iframe") ?? []
+    );
+    const iframe = embedIframes[0] ?? null;
     const embedNode =
       editorSurfaceRef.current?.querySelector<HTMLElement>(".component-embed");
     const wrapper = embedNode?.firstElementChild;
@@ -262,13 +371,20 @@ export function FrameViewport() {
       iframeChanged,
       inputPresent,
       inputValue,
+      mixedIframeCount: embedIframes.length,
+      mixedGenericIframeCount: embedIframes.filter((element) =>
+        element.src.includes("frame-viewport-embed=generic-")
+      ).length,
+      mixedCustomIframeCount: embedIframes.filter((element) =>
+        element.src.includes("frame-viewport-embed=custom-")
+      ).length,
     };
     setEmbedDiagnostics((current) =>
       JSON.stringify(current) === JSON.stringify(nextEmbedDiagnostics)
         ? current
         : nextEmbedDiagnostics
     );
-  }, [getEmbedIframe]);
+  }, []);
 
   useEffect(() => {
     updateDiagnostics();
@@ -287,6 +403,20 @@ export function FrameViewport() {
     updateDiagnostics();
   }, [frameCount, generation, mounted, updateDiagnostics]);
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setVisibilityDiagnostics((current) => ({
+        status: document.visibilityState === "hidden" ? "hidden" : "visible",
+        changeCount: current.changeCount + 1,
+        lastChangedAt: new Date().toISOString(),
+      }));
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   const handleSelectEmbed = useCallback(() => {
     const instance = editorRef.current;
     if (!instance) {
@@ -295,7 +425,7 @@ export function FrameViewport() {
     }
     let embedPosition: number | undefined;
     instance.view.state.doc.descendants((node, position) => {
-      if (node.type.name !== "embed") {
+      if (embedPosition !== undefined || node.type.name !== "embed") {
         return true;
       }
       embedPosition = position;
@@ -323,16 +453,41 @@ export function FrameViewport() {
     );
   }, [viewportGatedEmbeds]);
 
+  const handleEmbedModeChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const mode: EmbedMode =
+        event.target.value === "mixed"
+          ? "mixed"
+          : event.target.value === "custom"
+            ? "custom"
+            : "generic";
+      removeInjectedInput();
+      setEmbedMode(mode);
+      setEmbedGeneration((value) => value + 1);
+      setEmbedDiagnostics(initialEmbedDiagnostics);
+      setLastAction(
+        `${
+          mode === "mixed"
+            ? "Mixed Embeds"
+            : mode === "generic"
+              ? "Generic Embed"
+              : "Custom Embed"
+        } selected; fixture NodeViews recreated`
+      );
+    },
+    [removeInjectedInput]
+  );
+
   const handleEmbedRemount = useCallback(() => {
     removeInjectedInput();
     setEmbedGeneration((value) => value + 1);
     setEmbedDiagnostics(initialEmbedDiagnostics);
     setLastAction(
-      `Embed NodeView remounted with gating ${
+      `${embedMode === "mixed" ? "Mixed Embed NodeViews" : "Embed NodeView"} remounted with gating ${
         viewportGatedEmbeds ? "enabled" : "disabled"
       }`
     );
-  }, [removeInjectedInput, viewportGatedEmbeds]);
+  }, [embedMode, removeInjectedInput, viewportGatedEmbeds]);
 
   const handleMoveSelection = useCallback(() => {
     const instance = editorRef.current;
@@ -342,7 +497,7 @@ export function FrameViewport() {
     }
     let paragraphPosition: number | undefined;
     instance.view.state.doc.descendants((node, position) => {
-      if (node.type.name !== "paragraph") {
+      if (paragraphPosition !== undefined || node.type.name !== "paragraph") {
         return true;
       }
       paragraphPosition = position + 1;
@@ -478,23 +633,42 @@ export function FrameViewport() {
           This Embed uses its own Editor budget and is not included in Direct
           Frame budget.
         </Description>
+        <Description>
+          Generic and custom modes share the same Editor budget. Native video,
+          images, and Drive links are outside this iframe gate. Background-tab
+          evidence requires Page visibility to report hidden.
+        </Description>
+        <Description>
+          Mixed Embeds is the authoritative shared-budget hard-cap mode: all 18
+          NodeViews share this Editor’s capacity-8 budget. The Direct Frame list
+          is a separate scope.
+        </Description>
         <Controls aria-label="Embed NodeView controls">
+          <ControlLabel>
+            Embed mode
+            <select value={embedMode} onChange={handleEmbedModeChange}>
+              <option value="generic">Generic Embed</option>
+              <option value="custom">Custom Embed</option>
+              <option value="mixed">Mixed Embeds</option>
+            </select>
+          </ControlLabel>
           <button type="button" onClick={handleEmbedGatingToggle}>
             {viewportGatedEmbeds
               ? "Disable Embed gating"
               : "Enable Embed gating"}
           </button>
           <button type="button" onClick={handleEmbedRemount}>
-            Remount Embed NodeView
+            Remount Embed NodeView{embedMode === "mixed" ? "s" : ""}
           </button>
           <button type="button" onClick={handleSelectEmbed}>
-            Select Embed NodeView
+            Select {embedMode === "mixed" ? "first " : ""}Embed NodeView
           </button>
           <button type="button" onClick={handleMoveSelection}>
-            Move selection below embed
+            Move selection below {embedMode === "mixed" ? "first " : ""}embed
           </button>
           <button type="button" onClick={handleInjectInput}>
             Inject fixed-value input
+            {embedMode === "mixed" ? " into first iframe" : ""}
           </button>
           <button type="button" onClick={handleRefresh}>
             Refresh diagnostics
@@ -508,7 +682,7 @@ export function FrameViewport() {
             Trigger beforeprint pin test
           </button>
           <button type="button" onClick={handleFullscreen}>
-            Request iframe fullscreen
+            Request {embedMode === "mixed" ? "first " : ""}iframe fullscreen
           </button>
         </Controls>
         <Description id="beforeprint-help">
@@ -517,9 +691,39 @@ export function FrameViewport() {
         </Description>
         <Diagnostics aria-live="polite" aria-atomic="false">
           <div>
+            Embed mode:{" "}
+            {embedMode === "mixed"
+              ? "Mixed Embeds"
+              : embedMode === "generic"
+                ? "Generic Embed"
+                : "Custom Embed"}
+          </div>
+          <div>Fixture NodeView remount generation: {embedGeneration}</div>
+          <div>
             Embed viewport gating policy:{" "}
             {viewportGatedEmbeds ? "enabled" : "disabled"}
           </div>
+          <div>Page visibility: {visibilityDiagnostics.status}</div>
+          <div>
+            Visibility changes: {visibilityDiagnostics.changeCount}; last:{" "}
+            {visibilityDiagnostics.lastChangedAt ?? "none"}
+          </div>
+          {embedMode === "mixed" && (
+            <>
+              <div>
+                Total mixed iframe elements in DOM:{" "}
+                {embedDiagnostics.mixedIframeCount}
+              </div>
+              <div>
+                Generic mixed iframe elements in DOM:{" "}
+                {embedDiagnostics.mixedGenericIframeCount}
+              </div>
+              <div>
+                Custom mixed iframe elements in DOM:{" "}
+                {embedDiagnostics.mixedCustomIframeCount}
+              </div>
+            </>
+          )}
           <div>
             Iframe mounted: {embedDiagnostics.iframeMounted ? "yes" : "no"}
           </div>
@@ -550,13 +754,25 @@ export function FrameViewport() {
           </div>
           <div>Last action/error: {lastAction}</div>
         </Diagnostics>
-        <EditorSurface ref={editorSurfaceRef}>
+        <EditorSurface ref={editorSurfaceRef} $mixed={embedMode === "mixed"}>
           <Editor
             key={embedGeneration}
             ref={editorRef}
-            defaultValue={embedDocument}
+            defaultValue={
+              embedMode === "mixed"
+                ? mixedEmbedDocument
+                : embedMode === "generic"
+                  ? genericEmbedDocument
+                  : customEmbedDocument
+            }
             dictionary={dictionary}
-            embeds={[embedDescriptor]}
+            embeds={
+              embedMode === "mixed"
+                ? mixedEmbedDescriptors
+                : embedMode === "generic"
+                  ? genericEmbedDescriptors
+                  : customEmbedDescriptors
+            }
             extensions={richExtensions}
             onClickLink={handleClickLink}
             onInit={updateDiagnostics}
@@ -697,9 +913,17 @@ const BudgetDiagnostics = styled.div`
   margin-bottom: 6px;
 `;
 
-const EditorSurface = styled.div`
+const EditorSurface = styled.div<{ $mixed?: boolean }>`
   max-width: 760px;
   min-height: 480px;
+
+  ${(props) =>
+    props.$mixed &&
+    `
+      .component-embed {
+        margin-bottom: 360px;
+      }
+    `}
 `;
 
 const Fixture = styled.div`

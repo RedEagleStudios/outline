@@ -110,6 +110,7 @@ export enum MentionType {
 
 export type PublicEnv = {
   ROOT_SHARE_ID?: string;
+  VIEWPORT_GATED_EMBEDS_ENABLED: boolean;
   analytics: {
     service: IntegrationService;
     settings: IntegrationSettings<IntegrationType.Analytics>;
@@ -414,6 +415,8 @@ export enum TeamPreference {
   DisabledEmbeds = "disabledEmbeds",
   /** Whether smart typography replacements (smart quotes, dashes, etc.) are enabled for the team. */
   SmartText = "smartText",
+  /** Whether embeds may be activated based on their viewport position. */
+  ViewportGatedEmbeds = "viewportGatedEmbeds",
 }
 
 export type TeamPreferences = {
@@ -432,6 +435,7 @@ export type TeamPreferences = {
   [TeamPreference.MCP]?: boolean;
   [TeamPreference.DisabledEmbeds]?: string[];
   [TeamPreference.SmartText]?: boolean;
+  [TeamPreference.ViewportGatedEmbeds]?: boolean;
 };
 
 export enum NavigationNodeType {

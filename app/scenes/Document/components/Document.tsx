@@ -382,6 +382,7 @@ function DocumentScene({
                       value={readOnly ? document.data : undefined}
                       defaultValue={document.data}
                       embedsDisabled={embedsDisabled}
+                      viewportGatingEligible
                       onSynced={onSynced}
                       onFileUploadStart={onFileUploadStart}
                       onFileUploadStop={onFileUploadStop}

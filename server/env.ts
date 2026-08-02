@@ -798,6 +798,15 @@ export class Environment {
   );
 
   /**
+   * Whether viewport-gated embeds may be enabled for opted-in workspaces.
+   */
+  @Public
+  @IsBoolean()
+  public VIEWPORT_GATED_EMBEDS_ENABLED = this.toBoolean(
+    environment.VIEWPORT_GATED_EMBEDS_ENABLED ?? "false"
+  );
+
+  /**
    * The AI formatting provider to use.
    */
   @IsOptional()

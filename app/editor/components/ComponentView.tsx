@@ -66,7 +66,8 @@ export default class ComponentView {
     this.decorations = decorations;
     this.node = node;
     this.view = view;
-    this.viewportGating = editor.props.viewportGatedEmbeds;
+    this.viewportGating =
+      node.type.name === "embed" ? editor.props.viewportGatedEmbeds : undefined;
     this.dom = node.type.spec.inline
       ? document.createElement("span")
       : document.createElement("div");

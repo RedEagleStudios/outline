@@ -3,8 +3,14 @@ import styled from "styled-components";
 import Frame from "../components/Frame";
 import type { EmbedProps as Props } from ".";
 
-function Pinterest({ matches, ...props }: Props) {
-  const boardUrl = props.attrs.href;
+function Pinterest({
+  attrs,
+  style,
+  isSelected,
+  isResizing,
+  viewportGating,
+}: Props) {
+  const boardUrl = attrs.href;
   const frame = React.useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = React.useState(400);
 
@@ -27,7 +33,10 @@ function Pinterest({ matches, ...props }: Props) {
 
   return (
     <PinterestFrame
-      {...props}
+      style={style}
+      isSelected={isSelected}
+      isResizing={isResizing}
+      viewportGating={viewportGating}
       ref={frame}
       src={`/embeds/pinterest?url=${encodeURIComponent(boardUrl)}`}
       title="Pinterest Content"

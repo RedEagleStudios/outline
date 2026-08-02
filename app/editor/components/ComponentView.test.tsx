@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 
 import { NodeSelection, TextSelection } from "prosemirror-state";
+import { Schema } from "prosemirror-model";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
@@ -9,8 +10,10 @@ import { light } from "@shared/styles/theme";
 import type { EmbedDescriptor } from "@shared/editor/embeds";
 import { basicExtensions } from "@shared/editor/nodes";
 import EmbedNode from "@shared/editor/nodes/Embed";
+import type { ComponentProps } from "@shared/editor/types";
 import Editor, { type Editor as EditorInstance } from "~/editor";
 import useDictionary from "~/hooks/useDictionary";
+import { NodeViewRenderer } from "./NodeViewRenderer";
 
 jest.mock("~/components/Lightbox", () => () => null);
 
@@ -170,12 +173,49 @@ describe("ComponentView selection propagation", () => {
     const originalRenderer = Array.from(instance.renderers)[0];
     expect(originalRenderer.props.viewportGating).toBe(true);
 
+    const createNonEmbedRenderer = (nodeName: "image" | "dropdown") => {
+      const fallbackSchema = new Schema({
+        nodes: {
+          doc: {},
+          text: {},
+          [nodeName]: {},
+        },
+      });
+      const nodeType =
+        originalView.state.schema.nodes[nodeName] ??
+        fallbackSchema.nodes[nodeName];
+      const renderer = new NodeViewRenderer<ComponentProps>(
+        global.document.createElement("span"),
+        () => null,
+        {
+          node: nodeType.create(),
+          view: originalView,
+          isSelected: false,
+          isEditable: true,
+          getPos: () => 0,
+          decorations: [],
+          viewportGating: undefined,
+          theme: light,
+        }
+      );
+      instance.renderers.add(renderer);
+      return renderer;
+    };
+    const imageRenderer = createNonEmbedRenderer("image");
+    const dropdownRenderer = createNonEmbedRenderer("dropdown");
+    const imageSetProp = jest.spyOn(imageRenderer, "setProp");
+    const dropdownSetProp = jest.spyOn(dropdownRenderer, "setProp");
+
     renderEditor(false, false);
     expect(instance.view).toBe(originalView);
     expect(instance.view.state).toBe(originalState);
     expect(instance.view.state.doc).toBe(originalDocument);
     expect(instance.view.state.selection).toBe(originalSelection);
     expect(originalRenderer.props.viewportGating).toBe(false);
+    expect(imageSetProp).not.toHaveBeenCalled();
+    expect(dropdownSetProp).not.toHaveBeenCalled();
+    expect(imageRenderer.props.viewportGating).toBeUndefined();
+    expect(dropdownRenderer.props.viewportGating).toBeUndefined();
 
     renderEditor(false, true);
     expect(originalRenderer.props.viewportGating).toBe(false);
@@ -200,8 +240,15 @@ describe("ComponentView selection propagation", () => {
       originalView.dispatch(originalView.state.tr.delete(0, existingNodeSize));
       originalView.dispatch(originalView.state.tr.insert(0, embedNode));
     });
-    const replacementRenderer = Array.from(instance.renderers)[0];
+    const replacementRenderer = Array.from(instance.renderers).find(
+      (renderer) => renderer.props.node.type.name === "embed"
+    );
+    if (!replacementRenderer) {
+      throw new Error("Expected replacement embed renderer");
+    }
     expect(replacementRenderer).not.toBe(originalRenderer);
     expect(replacementRenderer.props.viewportGating).toBe(true);
+    expect(instance.renderers.has(imageRenderer)).toBe(true);
+    expect(instance.renderers.has(dropdownRenderer)).toBe(true);
   });
 });

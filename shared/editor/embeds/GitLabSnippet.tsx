@@ -2,7 +2,13 @@ import * as React from "react";
 import Frame from "../components/Frame";
 import type { EmbedProps as Props } from ".";
 
-function GitLabSnippet(props: Props) {
+function GitLabSnippet({
+  attrs,
+  style,
+  isSelected,
+  isResizing,
+  viewportGating,
+}: Props) {
   const frame = React.useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = React.useState(400);
 
@@ -26,8 +32,12 @@ function GitLabSnippet(props: Props) {
   return (
     <Frame
       ref={frame}
-      src={`/embeds/gitlab?url=${encodeURIComponent(props.attrs.href)}`}
-      className={props.isSelected ? "ProseMirror-selectednode" : ""}
+      src={`/embeds/gitlab?url=${encodeURIComponent(attrs.href)}`}
+      className={isSelected ? "ProseMirror-selectednode" : ""}
+      style={style}
+      isSelected={isSelected}
+      isResizing={isResizing}
+      viewportGating={viewportGating}
       width="100%"
       height={`${height}px`}
       title="GitLab Snippet"

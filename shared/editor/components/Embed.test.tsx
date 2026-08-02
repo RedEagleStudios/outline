@@ -7,7 +7,7 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
 import { light } from "../../styles/theme";
-import type { EmbedDescriptor } from "../embeds";
+import type { EmbedDescriptor, EmbedProps } from "../embeds";
 import Embed from "./Embed";
 
 class ObserverMock {
@@ -44,7 +44,11 @@ const transformEmbed: EmbedDescriptor = {
   matcher: (url) => url.match(/^https:\/\/example\.com\/(.*)$/) ?? false,
 };
 
-const CustomEmbed = () => <div data-custom-embed>custom</div>;
+const customEmbedRender = jest.fn<void, [EmbedProps]>();
+const CustomEmbed = (props: EmbedProps) => {
+  customEmbedRender(props);
+  return <div data-custom-embed>custom</div>;
+};
 const customEmbed: EmbedDescriptor = {
   id: "custom-test",
   title: "Custom test",
@@ -66,6 +70,7 @@ describe("Embed viewport integration", () => {
   let schema: Schema;
 
   beforeEach(() => {
+    customEmbedRender.mockClear();
     jest.useFakeTimers();
     ObserverMock.instances = [];
     Object.defineProperty(globalThis, "IntersectionObserver", {
@@ -178,6 +183,27 @@ describe("Embed viewport integration", () => {
     expect(ObserverMock.instances).toHaveLength(0);
     expect(container.querySelector("iframe")).toBeNull();
   });
+
+  it.each([true, false])(
+    "forwards runtime lifecycle props to a custom embed when gating is %s",
+    (viewportGating) => {
+      render({
+        descriptor: customEmbed,
+        href: "https://custom.example.com/one",
+        viewportGating,
+        isSelected: true,
+      });
+
+      expect(customEmbedRender).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          isSelected: true,
+          isResizing: false,
+          viewportGating,
+          style: expect.objectContaining({ height: 400 }),
+        })
+      );
+    }
+  );
 
   it("propagates selection and resize state to the generic frame", () => {
     render({ viewportGating: true, isSelected: true });
