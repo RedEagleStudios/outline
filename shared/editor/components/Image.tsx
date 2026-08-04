@@ -181,9 +181,16 @@ const Image = (props: Props) => {
               draggable={isEditable ? false : undefined}
               style={{
                 ...widthStyle,
-                display: loaded ? "block" : "none",
+                display: "block",
+                opacity: loaded ? 1 : 0,
+                aspectRatio:
+                  !loaded && width && height
+                    ? `${width} / ${height}`
+                    : undefined,
               }}
               src={sanitizedSrc}
+              loading="lazy"
+              decoding="async"
               alt={node.attrs.alt || ""}
               onError={() => {
                 setError(true);
@@ -218,6 +225,10 @@ const Image = (props: Props) => {
             style={{
               ...widthStyle,
               display: "block",
+              position: "absolute",
+              top: 0,
+              left: 0,
+              pointerEvents: "none",
             }}
             src={`data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
               getPlaceholder(width, height)

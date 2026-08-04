@@ -6,6 +6,45 @@ import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import { TableLayout } from "../types";
 import { TableView } from "./TableView";
 
+const intersectionObserverDescriptor = Object.getOwnPropertyDescriptor(
+  globalThis,
+  "IntersectionObserver"
+);
+const cssDescriptor = Object.getOwnPropertyDescriptor(window, "CSS");
+
+class MockIntersectionObserver implements IntersectionObserver {
+  public static instances: MockIntersectionObserver[] = [];
+  public static failConstruction = false;
+
+  public constructor(public readonly callback: IntersectionObserverCallback) {
+    if (MockIntersectionObserver.failConstruction) {
+      throw new Error("observer unavailable");
+    }
+    MockIntersectionObserver.instances.push(this);
+  }
+
+  public readonly root = null;
+  public readonly rootMargin = "1000px 0px 1000px 0px";
+  public readonly thresholds = [0];
+  public readonly observe = jest.fn((target: Element) => {
+    this.targets.add(target);
+  });
+  public readonly unobserve = jest.fn((target: Element) => {
+    this.targets.delete(target);
+  });
+  public readonly disconnect = jest.fn();
+  public readonly takeRecords = () => [];
+
+  public emit(target: Element, isIntersecting: boolean) {
+    this.callback(
+      [{ target, isIntersecting } as IntersectionObserverEntry],
+      this
+    );
+  }
+
+  private readonly targets = new Set<Element>();
+}
+
 const tableNodeSpecs = tableNodes({
   tableGroup: "block",
   cellContent: "paragraph",
@@ -24,11 +63,14 @@ const schema = new Schema({
   },
 });
 
-const createTableNode = (layout: TableLayout | null = null) => {
+const createTableNode = (layout: TableLayout | null = null, rowCount = 1) => {
   const paragraph = schema.nodes.paragraph.create();
   const cell = schema.nodes.table_cell.create(null, paragraph);
   const row = schema.nodes.table_row.create(null, cell);
-  return schema.nodes.table.create({ layout }, row);
+  return schema.nodes.table.create(
+    { layout },
+    Array.from({ length: rowCount }, () => row)
+  );
 };
 
 const getScrollable = (view: TableView) => {
@@ -80,15 +122,36 @@ describe("TableView lifecycle", () => {
   };
 
   const runAllAnimationFrames = () => {
-    for (const handle of Array.from(animationFrames.keys())) {
-      runAnimationFrame(handle);
+    while (animationFrames.size) {
+      for (const handle of Array.from(animationFrames.keys())) {
+        runAnimationFrame(handle);
+      }
     }
   };
 
   const createView = (layout: TableLayout | null = null) => {
     const view = new TableView(createTableNode(layout), 100);
+    document.body.appendChild(view.dom);
     views.push(view);
     return view;
+  };
+
+  const enableRenderingContainment = () => {
+    Object.defineProperty(globalThis, "IntersectionObserver", {
+      configurable: true,
+      value: MockIntersectionObserver,
+    });
+    Object.defineProperty(window, "CSS", {
+      configurable: true,
+      value: {
+        supports: jest.fn(
+          (property: string, value: string) =>
+            (property === "content-visibility" && value === "auto") ||
+            (property === "contain-intrinsic-block-size" &&
+              value === "auto 100px")
+        ),
+      },
+    });
   };
 
   beforeEach(() => {
@@ -111,7 +174,95 @@ describe("TableView lifecycle", () => {
 
   afterEach(() => {
     views.forEach((view) => view.destroy());
+    document.body.replaceChildren();
+    MockIntersectionObserver.instances = [];
+    MockIntersectionObserver.failConstruction = false;
+    if (intersectionObserverDescriptor) {
+      Object.defineProperty(
+        globalThis,
+        "IntersectionObserver",
+        intersectionObserverDescriptor
+      );
+    } else {
+      Reflect.deleteProperty(globalThis, "IntersectionObserver");
+    }
+    if (cssDescriptor) {
+      Object.defineProperty(window, "CSS", cssDescriptor);
+    } else {
+      Reflect.deleteProperty(window, "CSS");
+    }
     jest.restoreAllMocks();
+  });
+
+  it("manages containment only after a mounted top-level view is eligible", () => {
+    enableRenderingContainment();
+    const view = new TableView(createTableNode(null, 3), 100);
+    views.push(view);
+
+    runAllAnimationFrames();
+    expect(
+      view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
+
+    document.body.appendChild(view.dom);
+    view.destroy();
+    const mounted = createView();
+    expect(
+      mounted.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
+
+    runAllAnimationFrames();
+    expect(
+      mounted.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(true);
+  });
+
+  it("estimates intrinsic block size from rows, updates it, and cleans up", () => {
+    enableRenderingContainment();
+    const view = new TableView(createTableNode(null, 3), 100);
+    document.body.appendChild(view.dom);
+    views.push(view);
+
+    runAllAnimationFrames();
+    expect(
+      view.dom.style.getPropertyValue("--table-intrinsic-block-size")
+    ).toBe("116px");
+
+    expect(view.update(createTableNode(null, 10))).toBe(true);
+    expect(
+      view.dom.style.getPropertyValue("--table-intrinsic-block-size")
+    ).toBe("347px");
+
+    view.destroy();
+    expect(
+      view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
+    expect(
+      view.dom.style.getPropertyValue("--table-intrinsic-block-size")
+    ).toBe("");
+  });
+
+  it("does not manage nested tables or observer fail-open paths", () => {
+    enableRenderingContainment();
+    const outer = document.body.appendChild(document.createElement("table"));
+    const nested = createView();
+    outer.appendChild(nested.dom);
+    runAllAnimationFrames();
+
+    expect(
+      nested.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
+
+    nested.destroy();
+    Object.defineProperty(globalThis, "IntersectionObserver", {
+      configurable: true,
+      value: undefined,
+    });
+    const failOpen = createView();
+    runAllAnimationFrames();
+    expect(
+      failOpen.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
   });
 
   it("performs no geometry or computed-style reads in the constructor", () => {
@@ -250,6 +401,7 @@ describe("TableView lifecycle", () => {
     const wrapper = document.createElement("div");
     wrapper.classList.add(EditorStyleHelper.table);
     outer.appendChild(wrapper);
+    document.body.appendChild(outer);
     const view = createView();
     wrapper.appendChild(view.dom);
     const addListener = jest.spyOn(document, "addEventListener");
@@ -262,6 +414,150 @@ describe("TableView lifecycle", () => {
       expect.anything()
     );
   });
+
+  it("measures nested geometry initially and locally without sticky or document scroll work", () => {
+    const outer = document.body.appendChild(document.createElement("table"));
+    const view = createView();
+    outer.appendChild(view.dom);
+    const reads = jest.fn();
+    setGeometry(
+      getScrollable(view),
+      {
+        scrollLeft: 10,
+        scrollWidth: 300,
+        clientWidth: 100,
+        clientHeight: 80,
+      },
+      reads
+    );
+    const rect = jest.spyOn(view.table, "getBoundingClientRect");
+    const addListener = jest.spyOn(document, "addEventListener");
+
+    runAllAnimationFrames();
+    expect(reads).toHaveBeenCalled();
+    expect(rect).not.toHaveBeenCalled();
+    expect(addListener).not.toHaveBeenCalledWith(
+      "scroll",
+      expect.any(Function),
+      expect.anything()
+    );
+
+    reads.mockClear();
+    getScrollable(view).dispatchEvent(new Event("scroll"));
+    runAllAnimationFrames();
+    expect(reads).toHaveBeenCalled();
+    expect(rect).not.toHaveBeenCalled();
+  });
+
+  it("gates pooled measurements and re-observes without stale hidden work", () => {
+    Object.defineProperty(globalThis, "IntersectionObserver", {
+      configurable: true,
+      value: MockIntersectionObserver,
+    });
+    let visibilityState: DocumentVisibilityState = "visible";
+    jest
+      .spyOn(document, "visibilityState", "get")
+      .mockImplementation(() => visibilityState);
+    const order: string[] = [];
+    const first = createView();
+    const second = createView();
+    [first, second].forEach((view, index) => {
+      setGeometry(
+        getScrollable(view),
+        {
+          scrollLeft: 0,
+          scrollWidth: 300,
+          clientWidth: 100,
+          clientHeight: 80,
+        },
+        () => order.push(`read-${index}`)
+      );
+      jest.spyOn(view.dom.classList, "toggle").mockImplementation((name) => {
+        if (
+          name !== EditorStyleHelper.tableFullWidth &&
+          name !== EditorStyleHelper.tableContentVisibility
+        ) {
+          order.push(`write-${index}`);
+        }
+        return false;
+      });
+    });
+
+    runAllAnimationFrames();
+    const observer = MockIntersectionObserver.instances[0];
+    expect(observer).toBeDefined();
+    expect(order).toEqual([]);
+    observer.emit(first.dom, false);
+    expect(order).toEqual([]);
+    observer.emit(first.dom, true);
+    observer.emit(second.dom, true);
+    runAllAnimationFrames();
+    const firstWrite = order.findIndex((value) => value.startsWith("write"));
+    const lastRead = Math.max(
+      ...order.map((value, index) => (value.startsWith("read") ? index : -1))
+    );
+    expect(firstWrite).toBeGreaterThan(lastRead);
+
+    first.dom.classList.add(EditorStyleHelper.tableStickyHeader);
+    observer.emit(first.dom, false);
+    expect(
+      first.dom.classList.contains(EditorStyleHelper.tableStickyHeader)
+    ).toBe(false);
+    order.length = 0;
+    observer.emit(first.dom, true);
+    visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    runAllAnimationFrames();
+    expect(order).toEqual([]);
+    expect(
+      first.dom.classList.contains(EditorStyleHelper.tableStickyHeader)
+    ).toBe(false);
+
+    visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    runAllAnimationFrames();
+    expect(order).toEqual([]);
+    expect(MockIntersectionObserver.instances).toHaveLength(2);
+    MockIntersectionObserver.instances[1].emit(first.dom, true);
+    runAllAnimationFrames();
+    expect(order.some((value) => value.startsWith("read"))).toBe(true);
+
+    first.destroy();
+    expect(
+      MockIntersectionObserver.instances[1].disconnect
+    ).not.toHaveBeenCalled();
+    second.destroy();
+    expect(
+      MockIntersectionObserver.instances[1].disconnect
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["unavailable", "construction failure"])(
+    "fails open when IntersectionObserver is %s",
+    (failure) => {
+      Object.defineProperty(globalThis, "IntersectionObserver", {
+        configurable: true,
+        value: failure === "unavailable" ? undefined : MockIntersectionObserver,
+      });
+      MockIntersectionObserver.failConstruction =
+        failure === "construction failure";
+      const view = createView();
+      const reads = jest.fn();
+      setGeometry(
+        getScrollable(view),
+        {
+          scrollLeft: 0,
+          scrollWidth: 200,
+          clientWidth: 100,
+          clientHeight: 80,
+        },
+        reads
+      );
+
+      runAllAnimationFrames();
+      expect(reads).toHaveBeenCalled();
+    }
+  );
 
   it("skips destroyed pending views and cancels only an empty shared batch", () => {
     const first = createView();
@@ -351,7 +647,7 @@ describe("TableView lifecycle", () => {
     );
   });
 
-  it("keeps later local and document scroll updates on per-view frames", () => {
+  it("coalesces later local and document scroll updates in one frame", () => {
     const view = createView();
     const scrollable = getScrollable(view);
     runAllAnimationFrames();
@@ -360,10 +656,46 @@ describe("TableView lifecycle", () => {
     scrollable.dispatchEvent(new Event("scroll"));
     document.dispatchEvent(new Event("scroll"));
 
-    expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(2);
+    expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("cancels queued per-view frames without leaking across destroy calls", () => {
+  it("limits a captured local scroll to its own table", () => {
+    const first = createView();
+    const second = createView();
+    const firstReads = jest.fn();
+    const secondReads = jest.fn();
+    setGeometry(
+      getScrollable(first),
+      {
+        scrollLeft: 0,
+        scrollWidth: 200,
+        clientWidth: 100,
+        clientHeight: 80,
+      },
+      firstReads
+    );
+    setGeometry(
+      getScrollable(second),
+      {
+        scrollLeft: 0,
+        scrollWidth: 200,
+        clientWidth: 100,
+        clientHeight: 80,
+      },
+      secondReads
+    );
+    runAllAnimationFrames();
+    firstReads.mockClear();
+    secondReads.mockClear();
+
+    getScrollable(first).dispatchEvent(new Event("scroll", { bubbles: true }));
+    runAllAnimationFrames();
+
+    expect(firstReads).toHaveBeenCalled();
+    expect(secondReads).not.toHaveBeenCalled();
+  });
+
+  it("cancels the queued shared frame without leaking across destroy calls", () => {
     const view = createView();
     const scrollable = getScrollable(view);
     runAllAnimationFrames();
@@ -377,7 +709,7 @@ describe("TableView lifecycle", () => {
     scrollable.dispatchEvent(new Event("scroll"));
     document.dispatchEvent(new Event("scroll"));
 
-    expect(cancelAnimationFrameSpy).toHaveBeenCalledTimes(2);
-    expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(2);
+    expect(cancelAnimationFrameSpy).toHaveBeenCalledTimes(1);
+    expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
   });
 });

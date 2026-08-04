@@ -5,7 +5,9 @@ import type {
   NodeType,
 } from "prosemirror-model";
 import type { Command } from "prosemirror-state";
-import { Plugin, TextSelection } from "prosemirror-state";
+import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
+import type { EditorState, Transaction } from "prosemirror-state";
+import { AttrStep } from "prosemirror-transform";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import styled from "styled-components";
@@ -25,8 +27,80 @@ import type {
   DropdownOption,
 } from "../lib/dropdowns";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
+import { transactionTouchesNodeTypes } from "../lib/transactionTouchesNodeTypes";
 import type { ComponentProps } from "../types";
 import Node from "./Node";
+
+interface DropdownRepairState {
+  initialRepairNeeded: boolean;
+}
+
+const dropdownNodeTypes = new Set(["dropdown"]);
+const dropdownRepairPluginKey = new PluginKey<DropdownRepairState>(
+  "dropdown-repair"
+);
+
+function documentNeedsDropdownRepair(doc: ProsemirrorNode): boolean {
+  const existingIds = new Set<string>();
+  let repairNeeded = false;
+
+  doc.descendants((node) => {
+    if (node.type.name !== "dropdown") {
+      return !repairNeeded;
+    }
+
+    if (!node.attrs.dropdownId && node.attrs.options) {
+      repairNeeded = true;
+      return false;
+    }
+
+    const nodeId = node.attrs.id;
+    if (typeof nodeId !== "string" || existingIds.has(nodeId)) {
+      repairNeeded = true;
+      return false;
+    }
+
+    existingIds.add(nodeId);
+    return true;
+  });
+
+  return repairNeeded;
+}
+
+function isIdentityInvariantDropdownSelection(
+  transaction: Transaction,
+  oldState: EditorState,
+  newState: EditorState
+): boolean {
+  if (!transaction.steps.length) {
+    return false;
+  }
+
+  let currentDoc = oldState.doc;
+  for (const step of transaction.steps) {
+    if (!(step instanceof AttrStep) || step.attr !== "selectedOptionId") {
+      return false;
+    }
+
+    const previousNode = currentDoc.nodeAt(step.pos);
+    const nextDoc = step.apply(currentDoc).doc;
+    const nextNode = nextDoc?.nodeAt(step.pos);
+    if (
+      !nextDoc ||
+      previousNode?.type.name !== "dropdown" ||
+      nextNode?.type.name !== "dropdown" ||
+      previousNode.attrs.id !== nextNode.attrs.id ||
+      previousNode.attrs.dropdownId !== nextNode.attrs.dropdownId ||
+      previousNode.attrs.options !== nextNode.attrs.options
+    ) {
+      return false;
+    }
+
+    currentDoc = nextDoc;
+  }
+
+  return currentDoc.eq(newState.doc);
+}
 
 function getDefaultAttrs(): DropdownAttrs {
   return {
@@ -98,10 +172,11 @@ function DropdownComponent({ node, view, getPos, isEditable }: ComponentProps) {
 
   const handleSelect = (option: DropdownOption) => {
     const pos = getPos();
-    const transaction = view.state.tr.setNodeMarkup(pos, undefined, {
-      ...node.attrs,
-      selectedOptionId: option.id,
-    });
+    const transaction = view.state.tr.setNodeAttribute(
+      pos,
+      "selectedOptionId",
+      option.id
+    );
 
     view.dispatch(transaction);
     view.focus();
@@ -248,7 +323,52 @@ export default class Dropdown extends Node {
   get plugins() {
     return [
       new Plugin({
-        appendTransaction: (_transactions, _oldState, newState) => {
+        key: dropdownRepairPluginKey,
+        state: {
+          init: (_, state): DropdownRepairState => ({
+            initialRepairNeeded: documentNeedsDropdownRepair(state.doc),
+          }),
+          apply: (transaction, pluginState): DropdownRepairState =>
+            transaction.getMeta(dropdownRepairPluginKey)
+              ? { initialRepairNeeded: false }
+              : pluginState,
+        },
+        appendTransaction: (transactions, oldState, newState) => {
+          if (
+            transactions.some((transaction) =>
+              transaction.getMeta(dropdownRepairPluginKey)
+            )
+          ) {
+            return null;
+          }
+
+          const pluginState = dropdownRepairPluginKey.getState(newState);
+          const documentTransactions = transactions.filter(
+            (transaction) => transaction.docChanged
+          );
+          if (!pluginState?.initialRepairNeeded) {
+            if (!documentTransactions.length) {
+              return null;
+            }
+
+            if (
+              transactions.length === 1 &&
+              (isIdentityInvariantDropdownSelection(
+                documentTransactions[0],
+                oldState,
+                newState
+              ) ||
+                !transactionTouchesNodeTypes(
+                  documentTransactions[0],
+                  oldState,
+                  newState,
+                  dropdownNodeTypes
+                ))
+            ) {
+              return null;
+            }
+          }
+
           const tr = newState.tr;
           const existingIds = new Set<string>();
           let modified = false;
@@ -279,7 +399,11 @@ export default class Dropdown extends Node {
             tr.setNodeAttribute(pos, "id", nextId);
           });
 
-          return modified ? tr : null;
+          if (modified || pluginState?.initialRepairNeeded) {
+            return tr.setMeta(dropdownRepairPluginKey, true);
+          }
+
+          return null;
         },
       }),
     ];

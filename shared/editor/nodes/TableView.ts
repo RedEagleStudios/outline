@@ -3,6 +3,11 @@ import { TableView as ProsemirrorTableView } from "prosemirror-tables";
 import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import { TableLayout } from "../types";
 import { isBrowser } from "../../utils/browser";
+import { registerTableMeasurement } from "./TableMeasurementCoordinator";
+import type {
+  TableMeasurement,
+  TableMeasurementRegistration,
+} from "./TableMeasurementCoordinator";
 
 interface TableGeometryMeasurement {
   readonly shadowLeft: boolean;
@@ -11,15 +16,16 @@ interface TableGeometryMeasurement {
   readonly width: number;
 }
 
-interface TableViewMeasurement extends TableGeometryMeasurement {
-  readonly sticky: boolean;
-  readonly stickyScrollOffset: number | null;
-}
+interface TableViewMeasurement
+  extends TableGeometryMeasurement, TableMeasurement {}
 
 interface StickyHeaderMeasurement {
   readonly sticky: boolean;
   readonly stickyScrollOffset: number | null;
 }
+
+const estimatedTableFrameHeight = 17;
+const estimatedTableRowHeight = 33;
 
 export class TableView extends ProsemirrorTableView {
   public constructor(
@@ -43,7 +49,17 @@ export class TableView extends ProsemirrorTableView {
     }
 
     this.updateFullWidthClass();
-    this.scheduleInitialUpdate();
+    if (isBrowser) {
+      this.measurementRegistration = registerTableMeasurement({
+        dom: this.dom,
+        readMeasurement: (headerOffset, includeSticky) =>
+          this.measure(headerOffset, includeSticky),
+        writeMeasurement: (measurement) => this.applyMeasurement(measurement),
+        resetSticky: () => this.cleanupStickyHeader(),
+        setRenderingContainment: (managed) =>
+          this.setRenderingContainment(managed),
+      });
+    }
   }
 
   public destroy() {
@@ -52,9 +68,8 @@ export class TableView extends ProsemirrorTableView {
     }
 
     this.destroyed = true;
-    TableView.removePendingInitialView(this);
     this.scrollable?.removeEventListener("scroll", this.localScrollHandler);
-    this.cancelScheduledUpdates();
+    this.measurementRegistration?.unregister();
     this.cleanupStickyHeader();
   }
 
@@ -63,7 +78,8 @@ export class TableView extends ProsemirrorTableView {
     if (didUpdate) {
       this.node = node;
       this.updateFullWidthClass();
-      this.scheduleClassListUpdate(node);
+      this.updateIntrinsicBlockSize();
+      this.measurementRegistration?.notifyLocalScroll();
     }
     return didUpdate;
   }
@@ -94,10 +110,51 @@ export class TableView extends ProsemirrorTableView {
     );
   }
 
-  private measure(headerOffset: number): TableViewMeasurement {
+  private setRenderingContainment(managed: boolean) {
+    const css = this.dom.ownerDocument.defaultView?.CSS;
+    const supported =
+      css?.supports("content-visibility", "auto") === true &&
+      css.supports("contain-intrinsic-block-size", "auto 100px");
+    const shouldManage = managed && supported;
+
+    if (shouldManage) {
+      this.dom.classList.add(EditorStyleHelper.tableContentVisibility);
+      this.updateIntrinsicBlockSize();
+      return;
+    }
+
+    if (
+      !this.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ) {
+      return;
+    }
+
+    this.dom.classList.remove(EditorStyleHelper.tableContentVisibility);
+    this.dom.style.removeProperty("--table-intrinsic-block-size");
+  }
+
+  private updateIntrinsicBlockSize() {
+    if (
+      !this.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ) {
+      return;
+    }
+
+    const estimate =
+      estimatedTableFrameHeight +
+      Math.max(1, this.node.childCount) * estimatedTableRowHeight;
+    this.dom.style.setProperty("--table-intrinsic-block-size", `${estimate}px`);
+  }
+
+  private measure(
+    headerOffset: number,
+    includeSticky: boolean
+  ): TableViewMeasurement {
     return {
       ...this.measureTableGeometry(),
-      ...this.measureStickyHeader(headerOffset),
+      ...(includeSticky
+        ? this.measureStickyHeader(headerOffset)
+        : { sticky: false, stickyScrollOffset: null }),
     };
   }
 
@@ -134,113 +191,13 @@ export class TableView extends ProsemirrorTableView {
     this.dom.style.setProperty("--table-width", `${measurement.width}px`);
   }
 
-  private scheduleClassListUpdate(node: Node) {
-    if (!isBrowser || this.destroyed) {
-      return;
-    }
-
-    this.node = node;
-    if (TableView.pendingInitialViews.has(this)) {
-      return;
-    }
-    if (this.classListAnimationFrame !== null) {
-      return;
-    }
-
-    this.classListAnimationFrame = requestAnimationFrame(() => {
-      this.classListAnimationFrame = null;
-      if (!this.destroyed && this.dom) {
-        this.applyTableGeometry(this.measureTableGeometry());
-      }
-    });
-  }
-
   private scrollable: HTMLDivElement | null = null;
 
   private readonly localScrollHandler = () => {
-    this.scheduleClassListUpdate(this.node);
+    this.measurementRegistration?.notifyLocalScroll();
   };
 
-  private scrollHandler: (() => void) | null = null;
-
-  private classListAnimationFrame: number | null = null;
-
-  private stickyHeaderAnimationFrame: number | null = null;
-
-  /** Default height of the app's fixed header */
-  private static readonly HEADER_HEIGHT = 60;
-
-  private static pendingInitialViews = new Set<TableView>();
-
-  private static initialAnimationFrame: number | null = null;
-
-  private static flushInitialUpdates = () => {
-    TableView.initialAnimationFrame = null;
-    const views = Array.from(TableView.pendingInitialViews);
-    TableView.pendingInitialViews.clear();
-    const liveViews = views.filter((view) => !view.destroyed);
-
-    liveViews.forEach((view) => view.prepareStickyHeader());
-    const headerOffset = TableView.getDocumentHeaderOffset();
-    const measurements = liveViews.map((view) => ({
-      view,
-      measurement: view.measure(headerOffset),
-    }));
-
-    measurements.forEach(({ view, measurement }) => {
-      if (!view.destroyed) {
-        view.applyMeasurement(measurement);
-      }
-    });
-  };
-
-  private static getDocumentHeaderOffset(): number {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(
-      "--header-offset"
-    );
-    return value ? parseFloat(value) : TableView.HEADER_HEIGHT;
-  }
-
-  private static removePendingInitialView(view: TableView) {
-    TableView.pendingInitialViews.delete(view);
-    if (
-      TableView.pendingInitialViews.size === 0 &&
-      TableView.initialAnimationFrame !== null
-    ) {
-      cancelAnimationFrame(TableView.initialAnimationFrame);
-      TableView.initialAnimationFrame = null;
-    }
-  }
-
-  private scheduleInitialUpdate() {
-    if (!isBrowser || this.destroyed) {
-      return;
-    }
-
-    TableView.pendingInitialViews.add(this);
-    if (TableView.initialAnimationFrame === null) {
-      TableView.initialAnimationFrame = requestAnimationFrame(
-        TableView.flushInitialUpdates
-      );
-    }
-  }
-
-  private prepareStickyHeader() {
-    if (
-      this.scrollHandler ||
-      this.dom.closest(`table .${EditorStyleHelper.table}`)
-    ) {
-      return;
-    }
-
-    this.scrollHandler = () => {
-      this.scheduleStickyHeaderUpdate();
-    };
-    document.addEventListener("scroll", this.scrollHandler, {
-      passive: true,
-      capture: true,
-    });
-  }
+  private measurementRegistration: TableMeasurementRegistration | undefined;
 
   /**
    * Cleans up the scroll listener and resets header styles.
@@ -250,69 +207,12 @@ export class TableView extends ProsemirrorTableView {
       return;
     }
 
-    if (this.scrollHandler) {
-      document.removeEventListener("scroll", this.scrollHandler, {
-        capture: true,
-      });
-      this.scrollHandler = null;
-    }
-
     // Reset sticky header state
     this.dom.classList.remove(EditorStyleHelper.tableStickyHeader);
     this.dom.style.removeProperty("--sticky-scroll-offset");
   }
 
-  private scheduleStickyHeaderUpdate() {
-    if (
-      !isBrowser ||
-      this.destroyed ||
-      this.stickyHeaderAnimationFrame !== null
-    ) {
-      return;
-    }
-
-    this.stickyHeaderAnimationFrame = requestAnimationFrame(() => {
-      this.stickyHeaderAnimationFrame = null;
-      if (!this.destroyed) {
-        this.updateStickyHeader();
-      }
-    });
-  }
-
-  private cancelScheduledUpdates() {
-    if (!isBrowser) {
-      return;
-    }
-
-    if (this.classListAnimationFrame !== null) {
-      cancelAnimationFrame(this.classListAnimationFrame);
-      this.classListAnimationFrame = null;
-    }
-
-    if (this.stickyHeaderAnimationFrame !== null) {
-      cancelAnimationFrame(this.stickyHeaderAnimationFrame);
-      this.stickyHeaderAnimationFrame = null;
-    }
-  }
-
-  /**
-   * Updates the header row transform to create a sticky effect.
-   */
-  private updateStickyHeader() {
-    if (!isBrowser || this.destroyed) {
-      return;
-    }
-
-    this.applyStickyMeasurement(
-      this.measureStickyHeader(this.getHeaderOffset())
-    );
-  }
-
   private measureStickyHeader(headerOffset: number): StickyHeaderMeasurement {
-    if (!this.scrollHandler) {
-      return { sticky: false, stickyScrollOffset: null };
-    }
-
     const headerRow = this.table.querySelector<HTMLElement>("tr");
     if (!headerRow) {
       return { sticky: false, stickyScrollOffset: null };
@@ -346,19 +246,6 @@ export class TableView extends ProsemirrorTableView {
 
     this.dom.classList.remove(EditorStyleHelper.tableStickyHeader);
     this.dom.style.removeProperty("--sticky-scroll-offset");
-  }
-
-  /**
-   * Gets the current header offset from the CSS variable.
-   *
-   * @returns the offset in pixels from the top of the viewport.
-   */
-  private getHeaderOffset(): number {
-    if (!isBrowser) {
-      return TableView.HEADER_HEIGHT;
-    }
-
-    return TableView.getDocumentHeaderOffset();
   }
 
   private destroyed = false;

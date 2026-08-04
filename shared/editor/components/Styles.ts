@@ -525,6 +525,38 @@ const textStyle = () => css`
   }
 `;
 
+const materializedTableStyle = css`
+  .${EditorStyleHelper.tableContentVisibility} {
+    content-visibility: visible;
+    contain-intrinsic-block-size: none;
+
+    > .${EditorStyleHelper.tableScrollable} {
+      overflow: visible !important;
+    }
+
+    &.${EditorStyleHelper.tableStickyHeader} {
+      > .${EditorStyleHelper.tableScrollable} > table > tbody > tr:first-child {
+        position: static;
+        z-index: auto;
+      }
+
+      > .${EditorStyleHelper.tableScrollable}
+        > table
+        > tbody
+        > tr:first-child
+        > th {
+        transform: none;
+        box-shadow: none;
+      }
+    }
+
+    &.${EditorStyleHelper.tableShadowLeft}::before,
+      &.${EditorStyleHelper.tableShadowRight}::after {
+      display: none;
+    }
+  }
+`;
+
 const style = (props: Props) => css`
 --font-size-p: var(--font-size-body);
 --font-size-h1: 28px;
@@ -2397,6 +2429,15 @@ table {
   position: relative;
 }
 
+.${EditorStyleHelper.tableContentVisibility} {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto var(--table-intrinsic-block-size);
+}
+
+html[data-outline-print-preparing="true"] & {
+  ${materializedTableStyle}
+}
+
 .${EditorStyleHelper.tableStickyHeader} {
   > .${EditorStyleHelper.tableScrollable} > table > tbody > tr:first-child {
     position: relative;
@@ -2568,6 +2609,8 @@ del {
 }
 
 @media print {
+  ${materializedTableStyle}
+
   .placeholder::before,
   .block-menu-trigger,
   .heading-actions,

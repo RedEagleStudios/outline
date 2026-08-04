@@ -80,6 +80,9 @@ export class EditorStyleHelper {
   /** Table wrapper */
   static readonly table = "table-wrapper";
 
+  /** Runtime-managed table rendering containment */
+  static readonly tableContentVisibility = "table-content-visibility";
+
   /** Table grip (circle in top left) */
   static readonly tableGrip = "table-grip";
 

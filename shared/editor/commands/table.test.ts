@@ -14,6 +14,7 @@ import {
   td,
   tr,
 } from "@shared/test/editor";
+import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import {
   addRowAndMoveSelection,
   indentSelectedTableText,
@@ -243,9 +244,34 @@ describe("table identity attributes", () => {
     expect(wrapper.querySelector("[data-table-id]")).toBeNull();
     expect(wrapper.querySelector("[data-row-id]")).toBeNull();
     expect(wrapper.querySelector("[data-cell-id]")).toBeNull();
+    expect(
+      wrapper.querySelector(`.${EditorStyleHelper.tableContentVisibility}`)
+    ).toBeNull();
     expect(wrapper.innerHTML).not.toContain("table-1");
     expect(wrapper.innerHTML).not.toContain("row-1");
     expect(wrapper.innerHTML).not.toContain("cell-1");
+  });
+
+  itWithDOM("does not serialize runtime containment for nested tables", () => {
+    const innerTable = schema.nodes.table.create(
+      null,
+      schema.nodes.tr.create(null, schema.nodes.td.create(null, p("Inner")))
+    );
+    const outerTable = schema.nodes.table.create(
+      null,
+      schema.nodes.tr.create(null, schema.nodes.td.create(null, innerTable))
+    );
+    const wrapper = document.createElement("div");
+
+    wrapper.appendChild(
+      DOMSerializer.fromSchema(schema).serializeNode(outerTable)
+    );
+
+    expect(wrapper.querySelectorAll("table")).toHaveLength(2);
+    expect(
+      wrapper.querySelector(`.${EditorStyleHelper.tableContentVisibility}`)
+    ).toBeNull();
+    expect(wrapper.innerHTML).not.toContain("--table-intrinsic-block-size");
   });
 
   itWithDOM("does not parse ids from DOM", () => {

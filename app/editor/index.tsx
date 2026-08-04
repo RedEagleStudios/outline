@@ -48,6 +48,7 @@ import type { TableCellHistoryContext } from "~/editor/extensions/TableCellHisto
 import type { Dictionary } from "~/hooks/useDictionary";
 import type { Properties } from "~/types";
 import Logger from "~/utils/Logger";
+import { registerEditorPrintFallback } from "~/utils/printPreparation";
 import ComponentView from "./components/ComponentView";
 import EditorContext from "./components/EditorContext";
 import type { NodeViewRenderer } from "./components/NodeViewRenderer";
@@ -260,6 +261,7 @@ export class Editor extends React.PureComponent<
   rulePlugins: PluginSimple[];
   events = new EventEmitter();
   mutationObserver?: MutationObserver;
+  printFallbackCleanup?: () => void;
 
   /**
    * We use componentDidMount instead of constructor as the init method requires
@@ -267,6 +269,9 @@ export class Editor extends React.PureComponent<
    */
   public componentDidMount() {
     this.init();
+    this.printFallbackCleanup = registerEditorPrintFallback(
+      this.elementRef.current?.ownerDocument ?? window.document
+    );
     window.addEventListener("theme-changed", this.dispatchThemeChanged);
 
     if (this.props.scrollTo) {
@@ -356,6 +361,7 @@ export class Editor extends React.PureComponent<
   }
 
   public componentWillUnmount(): void {
+    this.printFallbackCleanup?.();
     window.removeEventListener("theme-changed", this.dispatchThemeChanged);
     this.view?.destroy();
     this.mutationObserver?.disconnect();

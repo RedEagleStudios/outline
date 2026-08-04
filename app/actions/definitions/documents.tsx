@@ -43,6 +43,7 @@ import { getEventFiles } from "@shared/utils/files";
 import { Week } from "@shared/utils/time";
 import type UserMembership from "~/models/UserMembership";
 import { client } from "~/utils/ApiClient";
+import { printWithPreparation } from "~/utils/printPreparation";
 import DocumentDelete from "~/scenes/DocumentDelete";
 import { ProsemirrorHelper } from "~/models/helpers/ProsemirrorHelper";
 import DocumentPermanentDelete from "~/scenes/DocumentPermanentDelete";
@@ -953,8 +954,8 @@ export const printDocument = createAction({
   section: ActiveDocumentSection,
   icon: <PrintIcon />,
   visible: ({ activeDocumentId }) => !!(activeDocumentId && window.print),
-  perform: () => {
-    setTimeout(window.print, 0);
+  perform: async () => {
+    await printWithPreparation();
   },
 });
 

@@ -19,6 +19,7 @@ import {
   createInternalLinkAction,
 } from "~/actions";
 import history from "~/utils/history";
+import { printWithPreparation } from "~/utils/printPreparation";
 import {
   newDocumentPath,
   newTemplatePath,
@@ -222,8 +223,8 @@ export const printTemplate = createAction({
   section: ActiveTemplateSection,
   icon: <PrintIcon />,
   visible: ({ getActiveModel }) => !!getActiveModel(Template) && !!window.print,
-  perform: () => {
-    setTimeout(window.print, 0);
+  perform: async () => {
+    await printWithPreparation();
   },
 });
 
