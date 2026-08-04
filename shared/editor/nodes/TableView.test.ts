@@ -242,6 +242,65 @@ describe("TableView lifecycle", () => {
     ).toBe("");
   });
 
+  it("does not apply rendering containment to an initial full-width table", () => {
+    enableRenderingContainment();
+    const view = createView(TableLayout.fullWidth);
+
+    runAllAnimationFrames();
+
+    expect(view.dom.classList.contains(EditorStyleHelper.tableFullWidth)).toBe(
+      true
+    );
+    expect(
+      view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
+    expect(
+      view.dom.style.getPropertyValue("--table-intrinsic-block-size")
+    ).toBe("");
+  });
+
+  it("removes rendering containment immediately when changing to full width", () => {
+    enableRenderingContainment();
+    const view = createView();
+    runAllAnimationFrames();
+    expect(
+      view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(true);
+
+    expect(view.update(createTableNode(TableLayout.fullWidth))).toBe(true);
+
+    expect(view.dom.classList.contains(EditorStyleHelper.tableFullWidth)).toBe(
+      true
+    );
+    expect(
+      view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
+    expect(
+      view.dom.style.getPropertyValue("--table-intrinsic-block-size")
+    ).toBe("");
+  });
+
+  it("restores rendering containment when changing from full width", () => {
+    enableRenderingContainment();
+    const view = createView(TableLayout.fullWidth);
+    runAllAnimationFrames();
+    expect(
+      view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
+
+    expect(view.update(createTableNode())).toBe(true);
+
+    expect(view.dom.classList.contains(EditorStyleHelper.tableFullWidth)).toBe(
+      false
+    );
+    expect(
+      view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(true);
+    expect(
+      view.dom.style.getPropertyValue("--table-intrinsic-block-size")
+    ).toBe("50px");
+  });
+
   it("does not manage nested tables or observer fail-open paths", () => {
     enableRenderingContainment();
     const outer = document.body.appendChild(document.createElement("table"));

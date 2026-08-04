@@ -78,7 +78,7 @@ export class TableView extends ProsemirrorTableView {
     if (didUpdate) {
       this.node = node;
       this.updateFullWidthClass();
-      this.updateIntrinsicBlockSize();
+      this.updateRenderingContainment();
       this.measurementRegistration?.notifyLocalScroll();
     }
     return didUpdate;
@@ -111,11 +111,19 @@ export class TableView extends ProsemirrorTableView {
   }
 
   private setRenderingContainment(managed: boolean) {
+    this.renderingContainmentEligible = managed;
+    this.updateRenderingContainment();
+  }
+
+  private updateRenderingContainment() {
     const css = this.dom.ownerDocument.defaultView?.CSS;
     const supported =
       css?.supports("content-visibility", "auto") === true &&
       css.supports("contain-intrinsic-block-size", "auto 100px");
-    const shouldManage = managed && supported;
+    const shouldManage =
+      this.renderingContainmentEligible &&
+      this.node.attrs.layout !== TableLayout.fullWidth &&
+      supported;
 
     if (shouldManage) {
       this.dom.classList.add(EditorStyleHelper.tableContentVisibility);
@@ -198,6 +206,8 @@ export class TableView extends ProsemirrorTableView {
   };
 
   private measurementRegistration: TableMeasurementRegistration | undefined;
+
+  private renderingContainmentEligible = false;
 
   /**
    * Cleans up the scroll listener and resets header styles.
