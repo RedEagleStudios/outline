@@ -194,7 +194,7 @@ describe("TableView lifecycle", () => {
     jest.restoreAllMocks();
   });
 
-  it("manages containment only after a mounted top-level view is eligible", () => {
+  it("keeps containment off until a mounted top-level view is confirmed far", () => {
     enableRenderingContainment();
     const view = new TableView(createTableNode(null, 3), 100);
     views.push(view);
@@ -214,6 +214,11 @@ describe("TableView lifecycle", () => {
     runAllAnimationFrames();
     expect(
       mounted.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
+
+    MockIntersectionObserver.instances[0].emit(mounted.dom, false);
+    expect(
+      mounted.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
     ).toBe(true);
   });
 
@@ -224,6 +229,7 @@ describe("TableView lifecycle", () => {
     views.push(view);
 
     runAllAnimationFrames();
+    MockIntersectionObserver.instances[0].emit(view.dom, false);
     expect(
       view.dom.style.getPropertyValue("--table-intrinsic-block-size")
     ).toBe("116px");
@@ -242,11 +248,40 @@ describe("TableView lifecycle", () => {
     ).toBe("");
   });
 
+  it("removes containment on near entry and restores it on far exit", () => {
+    enableRenderingContainment();
+    const view = createView();
+    runAllAnimationFrames();
+    const observer = MockIntersectionObserver.instances[0];
+
+    observer.emit(view.dom, false);
+    expect(
+      view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(true);
+
+    observer.emit(view.dom, true);
+    expect(
+      view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
+    expect(
+      view.dom.style.getPropertyValue("--table-intrinsic-block-size")
+    ).toBe("");
+
+    observer.emit(view.dom, false);
+    expect(
+      view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(true);
+    expect(
+      view.dom.style.getPropertyValue("--table-intrinsic-block-size")
+    ).toBe("50px");
+  });
+
   it("does not apply rendering containment to an initial full-width table", () => {
     enableRenderingContainment();
     const view = createView(TableLayout.fullWidth);
 
     runAllAnimationFrames();
+    MockIntersectionObserver.instances[0].emit(view.dom, false);
 
     expect(view.dom.classList.contains(EditorStyleHelper.tableFullWidth)).toBe(
       true
@@ -263,6 +298,7 @@ describe("TableView lifecycle", () => {
     enableRenderingContainment();
     const view = createView();
     runAllAnimationFrames();
+    MockIntersectionObserver.instances[0].emit(view.dom, false);
     expect(
       view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
     ).toBe(true);
@@ -284,6 +320,7 @@ describe("TableView lifecycle", () => {
     enableRenderingContainment();
     const view = createView(TableLayout.fullWidth);
     runAllAnimationFrames();
+    MockIntersectionObserver.instances[0].emit(view.dom, false);
     expect(
       view.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
     ).toBe(false);
@@ -307,6 +344,7 @@ describe("TableView lifecycle", () => {
     const nested = createView();
     outer.appendChild(nested.dom);
     runAllAnimationFrames();
+    MockIntersectionObserver.instances[0].emit(nested.dom, false);
 
     expect(
       nested.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
@@ -509,10 +547,7 @@ describe("TableView lifecycle", () => {
   });
 
   it("gates pooled measurements and re-observes without stale hidden work", () => {
-    Object.defineProperty(globalThis, "IntersectionObserver", {
-      configurable: true,
-      value: MockIntersectionObserver,
-    });
+    enableRenderingContainment();
     let visibilityState: DocumentVisibilityState = "visible";
     jest
       .spyOn(document, "visibilityState", "get")
@@ -547,8 +582,14 @@ describe("TableView lifecycle", () => {
     expect(observer).toBeDefined();
     expect(order).toEqual([]);
     observer.emit(first.dom, false);
+    expect(
+      first.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(true);
     expect(order).toEqual([]);
     observer.emit(first.dom, true);
+    expect(
+      first.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
     observer.emit(second.dom, true);
     runAllAnimationFrames();
     const firstWrite = order.findIndex((value) => value.startsWith("write"));
@@ -562,8 +603,10 @@ describe("TableView lifecycle", () => {
     expect(
       first.dom.classList.contains(EditorStyleHelper.tableStickyHeader)
     ).toBe(false);
+    expect(
+      first.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(true);
     order.length = 0;
-    observer.emit(first.dom, true);
     visibilityState = "hidden";
     document.dispatchEvent(new Event("visibilitychange"));
     runAllAnimationFrames();
@@ -571,13 +614,27 @@ describe("TableView lifecycle", () => {
     expect(
       first.dom.classList.contains(EditorStyleHelper.tableStickyHeader)
     ).toBe(false);
+    expect(
+      first.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
 
     visibilityState = "visible";
     document.dispatchEvent(new Event("visibilitychange"));
     runAllAnimationFrames();
     expect(order).toEqual([]);
     expect(MockIntersectionObserver.instances).toHaveLength(2);
+    expect(
+      first.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
+    MockIntersectionObserver.instances[1].emit(first.dom, false);
+    expect(
+      first.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(true);
+    expect(order).toEqual([]);
     MockIntersectionObserver.instances[1].emit(first.dom, true);
+    expect(
+      first.dom.classList.contains(EditorStyleHelper.tableContentVisibility)
+    ).toBe(false);
     runAllAnimationFrames();
     expect(order.some((value) => value.startsWith("read"))).toBe(true);
 

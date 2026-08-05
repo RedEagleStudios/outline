@@ -111,7 +111,7 @@ export class TableView extends ProsemirrorTableView {
   }
 
   private setRenderingContainment(managed: boolean) {
-    this.renderingContainmentEligible = managed;
+    this.renderingContainmentRequested = managed;
     this.updateRenderingContainment();
   }
 
@@ -121,7 +121,7 @@ export class TableView extends ProsemirrorTableView {
       css?.supports("content-visibility", "auto") === true &&
       css.supports("contain-intrinsic-block-size", "auto 100px");
     const shouldManage =
-      this.renderingContainmentEligible &&
+      this.renderingContainmentRequested &&
       this.node.attrs.layout !== TableLayout.fullWidth &&
       supported;
 
@@ -207,7 +207,7 @@ export class TableView extends ProsemirrorTableView {
 
   private measurementRegistration: TableMeasurementRegistration | undefined;
 
-  private renderingContainmentEligible = false;
+  private renderingContainmentRequested = false;
 
   /**
    * Cleans up the scroll listener and resets header styles.

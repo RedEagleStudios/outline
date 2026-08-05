@@ -126,14 +126,12 @@ class TableMeasurementCoordinator {
       return;
     }
     state.stickyEligible = !state.table.dom.parentElement?.closest("table");
+    state.table.setRenderingContainment(false);
 
     state.subscription = registerViewportObserver(
       state.table.dom,
       (entry) => this.setNear(state, entry.isIntersecting),
       { rootMargin: "1000px 0px" }
-    );
-    state.table.setRenderingContainment(
-      state.stickyEligible && Boolean(state.subscription)
     );
     if (!state.subscription) {
       this.setNear(state, true);
@@ -144,6 +142,12 @@ class TableMeasurementCoordinator {
     if (!state.active) {
       return;
     }
+    if (this.document.visibilityState === "hidden") {
+      state.table.setRenderingContainment(false);
+      return;
+    }
+
+    state.table.setRenderingContainment(state.stickyEligible && !near);
     state.near = near;
     if (near) {
       this.enqueue(state);
@@ -182,13 +186,19 @@ class TableMeasurementCoordinator {
         this.frame = undefined;
       }
       this.queued.clear();
-      this.entries.forEach((state) => state.table.resetSticky());
+      this.entries.forEach((state) => {
+        state.near = false;
+        state.table.setRenderingContainment(false);
+        state.table.resetSticky();
+      });
+      this.updateScrollListener();
       return;
     }
 
     this.queued.clear();
     this.entries.forEach((state) => {
       state.near = false;
+      state.table.setRenderingContainment(false);
       state.table.resetSticky();
       state.subscription?.unsubscribe();
       state.subscription = undefined;
