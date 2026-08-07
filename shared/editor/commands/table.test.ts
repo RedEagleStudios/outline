@@ -20,6 +20,7 @@ import {
   indentSelectedTableText,
   setCellSelectionAttr,
   setRowAttr,
+  sortTable,
 } from "./table";
 
 function getTextPosition(
@@ -119,6 +120,130 @@ describe("addRowAndMoveSelection", () => {
     });
 
     expect(dropdowns).toEqual(["open"]);
+  });
+});
+
+describe("sortTable", () => {
+  const options = [
+    { id: "solved", label: "Solved", color: "#17834F" },
+    { id: "open", label: "Open Issue", color: "#BA1A1A" },
+    { id: "ignored", label: "Ignored", color: "#6B7280" },
+  ];
+
+  function dropdownCell(selectedOptionId: string, before = "", after = "") {
+    const dropdown = schema.nodes.dropdown.create({
+      id: `chip-${selectedOptionId}-${before.length}-${after.length}`,
+      dropdownId: "workspace-status",
+      selectedOptionId,
+    });
+    const content = [
+      ...(before ? [schema.text(before)] : []),
+      dropdown,
+      ...(after ? [schema.text(after)] : []),
+    ];
+
+    return schema.nodes.td.create(
+      null,
+      schema.nodes.paragraph.create(null, content)
+    );
+  }
+
+  function sortedRowNames(direction: "asc" | "desc"): string[] {
+    const tableNode = table([
+      tr([dropdownCell("open"), td("Open")]),
+      tr([dropdownCell("solved", " "), td("Solved leading")]),
+      tr([dropdownCell("ignored"), td("Ignored")]),
+      tr([dropdownCell("solved", "", "  "), td("Solved trailing")]),
+      tr([td(""), td("Empty")]),
+    ]);
+    const definition = schema.nodes.dropdown_definition.create({
+      id: "workspace-status",
+      name: "Status",
+      options,
+    });
+    const state = createEditorState(doc([tableNode, definition]));
+    const selectedState = state.apply(
+      state.tr.setSelection(
+        TextSelection.create(state.doc, getTextPosition(state, "Open"))
+      )
+    );
+    let transaction: Transaction | undefined;
+
+    sortTable({ index: 0, direction })(selectedState, (tr) => {
+      transaction = tr;
+    });
+    if (!transaction) {
+      throw new Error("Expected sortTable to dispatch a transaction");
+    }
+
+    const sortedTable = selectedState.apply(transaction).doc.firstChild;
+    if (!sortedTable) {
+      throw new Error("Expected a sorted table");
+    }
+
+    return Array.from(
+      { length: sortedTable.childCount },
+      (_, index) => sortedTable.child(index).child(1).textContent
+    );
+  }
+
+  it("sorts reference-only workspace dropdowns by configured order", () => {
+    expect(sortedRowNames("asc")).toEqual([
+      "Solved leading",
+      "Solved trailing",
+      "Open",
+      "Ignored",
+      "Empty",
+    ]);
+  });
+
+  it("reverses known option order while keeping equal options stable and empty cells last", () => {
+    expect(sortedRowNames("desc")).toEqual([
+      "Ignored",
+      "Open",
+      "Solved leading",
+      "Solved trailing",
+      "Empty",
+    ]);
+  });
+
+  it("uses generic text sorting for mixed dropdown and plain-text columns", () => {
+    const hydratedDropdown = schema.nodes.dropdown.create({
+      id: "mixed-solved",
+      dropdownId: "workspace-status",
+      selectedOptionId: "solved",
+      name: "Status",
+      options,
+    });
+    const dropdownCell = schema.nodes.td.create(
+      null,
+      schema.nodes.paragraph.create(null, hydratedDropdown)
+    );
+    const state = createEditorState(
+      doc(
+        table([
+          tr([dropdownCell, td("Dropdown")]),
+          tr([td("Open Issue"), td("Plain")]),
+        ])
+      )
+    );
+    const selectedState = state.apply(
+      state.tr.setSelection(
+        TextSelection.create(state.doc, getTextPosition(state, "Plain"))
+      )
+    );
+    let transaction: Transaction | undefined;
+
+    sortTable({ index: 0, direction: "asc" })(selectedState, (tr) => {
+      transaction = tr;
+    });
+    if (!transaction) {
+      throw new Error("Expected sortTable to dispatch a transaction");
+    }
+
+    const sortedTable = selectedState.apply(transaction).doc.firstChild;
+    expect(sortedTable?.child(0).child(1).textContent).toBe("Plain");
+    expect(sortedTable?.child(1).child(1).textContent).toBe("Dropdown");
   });
 });
 

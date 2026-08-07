@@ -154,6 +154,8 @@ Whitespace deletion next to inline image atoms is also handled before the browse
 - `shared/editor/nodes/Dropdown.tsx`
 - `shared/editor/nodes/DropdownDefinition.ts`
 - `shared/editor/lib/dropdowns.ts`
+- `shared/editor/commands/table.ts`
+- `shared/editor/commands/table.test.ts`
 - `shared/editor/nodes/index.ts`
 - `app/editor/components/BlockMenu.tsx`
 - `app/editor/menus/block.tsx`
@@ -175,6 +177,7 @@ The fork adds an MVP Google Docs-style dropdown chip for documents. Dropdowns ar
 - Workspace dropdown templates are stored per team and copied into documents when inserted so document Markdown remains portable.
 - Markdown serialization writes definitions as `<!-- outline-dropdown {...} -->` comments and chips as `{dropdown:status|open}`.
 - Legacy MVP chips with per-node `options` attrs remain readable as a fallback during transition.
+- Table columns containing dropdown chips sort by configured option order rather than label text. Sorting resolves reference-only chips from document definitions, ignores surrounding text whitespace, keeps equal statuses stable, and leaves empty cells last in either direction.
 
 ### Current Development: OpenCode AI Formatting Helper
 

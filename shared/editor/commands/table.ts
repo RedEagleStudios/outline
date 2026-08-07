@@ -23,6 +23,7 @@ import { CSVHelper } from "../../utils/csv";
 import { isCurrency, parseCurrency } from "../../utils/currency";
 import { parseDate } from "../../utils/date";
 import { chainTransactions } from "../lib/chainTransactions";
+import { getDropdownDefinition } from "../lib/dropdowns";
 import {
   getAllSelectedColumns,
   getCellsInColumn,
@@ -416,8 +417,69 @@ export function sortTable({
       const getCellContent = (row: TableRow): string =>
         row.columnMap.get(index)?.textContent ?? "";
 
+      interface DropdownSortKey {
+        dropdownId: string;
+        optionId: string;
+        optionIndex: number;
+      }
+
+      const getDropdownSortKey = (
+        row: TableRow
+      ): DropdownSortKey | undefined => {
+        const cell = row.columnMap.get(index);
+        let key: DropdownSortKey | undefined;
+
+        cell?.descendants((node) => {
+          if (node.type.name !== "dropdown") {
+            return true;
+          }
+
+          const dropdownId = node.attrs.dropdownId;
+          const selectedOptionId = node.attrs.selectedOptionId;
+          if (
+            typeof dropdownId !== "string" ||
+            typeof selectedOptionId !== "string"
+          ) {
+            return false;
+          }
+
+          const definition = getDropdownDefinition(state.doc, {
+            dropdownId,
+            selectedOptionId,
+            options: Array.isArray(node.attrs.options)
+              ? node.attrs.options
+              : undefined,
+            name:
+              typeof node.attrs.name === "string" ? node.attrs.name : undefined,
+          });
+          key = {
+            dropdownId,
+            optionId: selectedOptionId,
+            optionIndex: definition.options.findIndex(
+              (option) => option.id === selectedOptionId
+            ),
+          };
+          return false;
+        });
+
+        return key;
+      };
+
       // column data before sort
       const columnData = rows.map(getCellContent);
+      const dropdownKeys = rows.map(getDropdownSortKey);
+      const dropdownId = dropdownKeys.find((key) => key)?.dropdownId;
+      const compareAsDropdown =
+        dropdownId !== undefined &&
+        dropdownKeys.every((key, rowIndex) =>
+          key
+            ? key.dropdownId === dropdownId
+            : columnData[rowIndex].trim().length === 0
+        );
+      const dropdownKeysByRow = new Map(
+        rows.map((row, rowIndex) => [row, dropdownKeys[rowIndex]])
+      );
+      const originalRows = [...rows];
 
       // determine sorting type: date, currency, number, or text
       let compareAsDate = false;
@@ -455,6 +517,31 @@ export function sortTable({
       rows.sort((a, b) => {
         const aContent = getCellContent(a);
         const bContent = getCellContent(b);
+
+        if (compareAsDropdown) {
+          const aKey = dropdownKeysByRow.get(a);
+          const bKey = dropdownKeysByRow.get(b);
+
+          // Cells without a dropdown are empty for dropdown sorting and remain last.
+          if (!aKey) {
+            return bKey ? 1 : 0;
+          }
+          if (!bKey) {
+            return -1;
+          }
+
+          const aKnown = aKey.optionIndex >= 0;
+          const bKnown = bKey.optionIndex >= 0;
+          if (aKnown !== bKnown) {
+            return aKnown ? -1 : 1;
+          }
+          if (!aKnown) {
+            return aKey.optionId.localeCompare(bKey.optionId);
+          }
+
+          const difference = aKey.optionIndex - bKey.optionIndex;
+          return direction === "desc" ? -difference : difference;
+        }
 
         // empty cells always go to the end
         if (!aContent) {
@@ -502,12 +589,16 @@ export function sortTable({
         }
       });
 
-      if (direction === "desc") {
+      if (direction === "desc" && !compareAsDropdown) {
         rows.reverse();
       }
 
       // check if column data changed, if not then do not replace table
-      if (columnData.join() === rows.map(getCellContent).join()) {
+      if (
+        compareAsDropdown
+          ? originalRows.every((row, rowIndex) => row === rows[rowIndex])
+          : columnData.join() === rows.map(getCellContent).join()
+      ) {
         return true;
       }
 
