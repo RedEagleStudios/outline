@@ -104,6 +104,13 @@ export function EditorStress() {
     .filter((entry) =>
       entry.name.includes(editorStressFixtureUrlMarker)
     ).length;
+  const rendererCounts = Array.from(editorRef.current?.renderers ?? []).reduce<
+    Record<string, number>
+  >((result, renderer) => {
+    const name = renderer.props.node.type.name;
+    result[name] = (result[name] ?? 0) + 1;
+    return result;
+  }, {});
 
   return (
     <Scene title="Editor stress">
@@ -143,6 +150,7 @@ export function EditorStress() {
         </div>
         <div>Active media elements: {activeResources}</div>
         <div>NodeView renderers: {editorRef.current?.renderers.size ?? 0}</div>
+        <div>NodeView renderers by type: {JSON.stringify(rendererCounts)}</div>
         <div>Fixture resource timings: {fixtureTimings}</div>
       </Diagnostics>
       <EditorSurface ref={containerRef}>

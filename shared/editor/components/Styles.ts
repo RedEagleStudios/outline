@@ -1005,6 +1005,53 @@ img.ProseMirror-separator {
   display: block;
 }
 
+.component-dropdown {
+  display: inline-flex;
+  vertical-align: baseline;
+
+  > button {
+    align-items: center;
+    border: 0;
+    border-radius: 999px;
+    color: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-size: 0.9em;
+    font-weight: 500;
+    gap: 4px;
+    line-height: 1.25;
+    margin: 0 1px;
+    padding: 1px 7px;
+    vertical-align: baseline;
+    transition: filter 120ms ease;
+
+    &:focus {
+      outline: none;
+    }
+
+    &:focus-visible {
+      outline: 2px solid ${props.theme.accent};
+      outline-offset: 2px;
+    }
+
+    &:not(:disabled):${hover} {
+      filter: brightness(0.92);
+    }
+
+    &:disabled {
+      cursor: default;
+      opacity: 0.78;
+    }
+
+    > span[aria-hidden="true"] {
+      font-size: 0.8em;
+      line-height: 1;
+      opacity: 0.85;
+    }
+  }
+}
+
 .image-commented .image-wrapper {
   outline: ${props.theme.commentedImageOutlineLight} solid 2px;
 }

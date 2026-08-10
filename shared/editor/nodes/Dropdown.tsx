@@ -8,11 +8,10 @@ import type { Command } from "prosemirror-state";
 import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { AttrStep } from "prosemirror-transform";
-import * as React from "react";
-import * as ReactDOM from "react-dom";
-import styled from "styled-components";
+import { createPortal } from "react-dom";
+import { observer } from "mobx-react";
+import { useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { s } from "../../styles";
 import {
   defaultDropdownDefinition,
   dropdownMarkdownRule,
@@ -21,21 +20,59 @@ import {
   getDocumentDropdownDefinitions,
   getSelectedDropdownOption,
 } from "../lib/dropdowns";
-import type {
-  DropdownAttrs,
-  DropdownDefinition,
-  DropdownOption,
-} from "../lib/dropdowns";
+import type { DropdownAttrs, DropdownDefinition } from "../lib/dropdowns";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
+import { isRemoteTransaction } from "../lib/multiplayer";
 import { transactionTouchesNodeTypes } from "../lib/transactionTouchesNodeTypes";
-import type { ComponentProps } from "../types";
+import type { WidgetProps } from "../lib/Extension";
+import { DropdownMenu } from "../components/DropdownMenu";
 import Node from "./Node";
+import { DropdownMenuController } from "./DropdownMenuController";
+import { DropdownView } from "./DropdownView";
 
 interface DropdownRepairState {
   initialRepairNeeded: boolean;
 }
 
+interface DropdownMenuWidgetProps {
+  controller: DropdownMenuController;
+}
+
+const DropdownMenuWidget = observer(function DropdownMenuWidget({
+  controller,
+}: DropdownMenuWidgetProps) {
+  useEffect(() => {
+    controller.markWidgetMounted();
+    return controller.markWidgetUnmounted;
+  }, [controller]);
+  const activeView = controller.activeView;
+  const definition = controller.definition;
+  const selectedOptionId = controller.selectedOptionId;
+  const rect = controller.rect;
+  if (!activeView || !definition || !selectedOptionId || !rect) {
+    return null;
+  }
+
+  return createPortal(
+    <span
+      ref={controller.setMenuElement}
+      data-dropdown-menu-revision={controller.revision}
+    >
+      <DropdownMenu
+        definition={definition}
+        selectedOptionId={selectedOptionId}
+        anchorRect={rect}
+        focusKey={activeView.id}
+        onSelect={controller.handleSelect}
+        onEscape={controller.handleEscape}
+      />
+    </span>,
+    activeView.dom.ownerDocument.body
+  );
+});
+
 const dropdownNodeTypes = new Set(["dropdown"]);
+const dropdownPresentationNodeTypes = new Set(["dropdown_definition"]);
 const dropdownRepairPluginKey = new PluginKey<DropdownRepairState>(
   "dropdown-repair"
 );
@@ -110,127 +147,12 @@ function getDefaultAttrs(): DropdownAttrs {
   };
 }
 
-function DropdownComponent({ node, view, getPos, isEditable }: ComponentProps) {
-  const [open, setOpen] = React.useState(false);
-  const [menuRect, setMenuRect] = React.useState<DOMRect>();
-  const wrapperRef = React.useRef<HTMLSpanElement>(null);
-  const menuRef = React.useRef<HTMLSpanElement>(null);
-  const definition = getDropdownDefinition(view.state.doc, node.attrs);
-  const selectedOption = getSelectedDropdownOption(
-    definition,
-    node.attrs.selectedOptionId
-  );
-
-  React.useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const updateMenuRect = () => {
-      const rect = wrapperRef.current?.getBoundingClientRect();
-
-      if (rect) {
-        setMenuRect(rect);
-      }
-    };
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as HTMLElement;
-
-      if (
-        wrapperRef.current?.contains(target) ||
-        menuRef.current?.contains(target)
-      ) {
-        return;
-      }
-
-      setOpen(false);
-    };
-
-    updateMenuRect();
-    document.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("scroll", updateMenuRect, true);
-    window.addEventListener("resize", updateMenuRect);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("scroll", updateMenuRect, true);
-      window.removeEventListener("resize", updateMenuRect);
-    };
-  }, [open]);
-
-  const handleToggle = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (!isEditable) {
-      return;
-    }
-
-    setOpen((previous) => !previous);
-  };
-
-  const handleSelect = (option: DropdownOption) => {
-    const pos = getPos();
-    const transaction = view.state.tr.setNodeAttribute(
-      pos,
-      "selectedOptionId",
-      option.id
-    );
-
-    view.dispatch(transaction);
-    view.focus();
-    setOpen(false);
-  };
-
-  return (
-    <Wrapper ref={wrapperRef} contentEditable={false}>
-      <Chip
-        type="button"
-        $color={selectedOption.color}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        disabled={!isEditable}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={handleToggle}
-      >
-        {selectedOption.label}
-        {isEditable && <Caret aria-hidden>▾</Caret>}
-      </Chip>
-      {open &&
-        menuRect &&
-        ReactDOM.createPortal(
-          <Menu
-            ref={menuRef}
-            role="menu"
-            aria-label={definition.name}
-            $top={menuRect.bottom + 4}
-            $left={menuRect.left}
-          >
-            <MenuHeader>{definition.name}</MenuHeader>
-            {definition.options.map((option) => (
-              <MenuItem
-                key={option.id}
-                type="button"
-                role="menuitemradio"
-                aria-checked={option.id === selectedOption.id}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => handleSelect(option)}
-              >
-                <OptionPill $color={option.color}>{option.label}</OptionPill>
-              </MenuItem>
-            ))}
-          </Menu>,
-          document.body
-        )}
-    </Wrapper>
-  );
-}
-
 /**
  * Inline document dropdown chip backed by document-level definitions.
  */
 export default class Dropdown extends Node {
+  private readonly menuController = new DropdownMenuController();
+
   get name() {
     return "dropdown";
   }
@@ -314,14 +236,86 @@ export default class Dropdown extends Node {
     };
   }
 
-  component = DropdownComponent;
-
   get rulePlugins() {
     return [dropdownMarkdownRule];
   }
 
+  /** Renders the extension's singleton dropdown menu under editor context.
+   *
+   * @param _props the editor widget properties.
+   * @returns the menu portal adapter, which renders null while closed.
+   */
+  widget = (_props: WidgetProps) => (
+    <DropdownMenuWidget controller={this.menuController} />
+  );
+
   get plugins() {
+    const controller = this.menuController;
+    const presentationPluginKey = new PluginKey<number>(
+      "dropdown-presentation"
+    );
+    const presentationPlugin = new Plugin<number>({
+      key: presentationPluginKey,
+      state: {
+        init: () => 0,
+        apply: (transaction, value, oldState, newState) => {
+          if (!transaction.docChanged) {
+            return value;
+          }
+          const definitionChanged = transactionTouchesNodeTypes(
+            transaction,
+            oldState,
+            newState,
+            dropdownPresentationNodeTypes
+          );
+          const broadRemoteReplacement =
+            isRemoteTransaction(transaction) &&
+            !isIdentityInvariantDropdownSelection(
+              transaction,
+              oldState,
+              newState
+            ) &&
+            transactionTouchesNodeTypes(
+              transaction,
+              oldState,
+              newState,
+              dropdownNodeTypes
+            );
+          if (!definitionChanged && !broadRemoteReplacement) {
+            return value;
+          }
+          return value + 1;
+        },
+      },
+      props: {
+        nodeViews: {
+          [this.name]: (node, view, getPos, decorations) =>
+            new DropdownView(node, view, getPos, controller, decorations),
+        },
+      },
+      view: (view) => {
+        controller.attach(view, () => this.editor.forceUpdate());
+        let generation = presentationPluginKey.getState(view.state) ?? 0;
+        let editable = view.editable;
+        return {
+          update: () => {
+            const nextGeneration =
+              presentationPluginKey.getState(view.state) ?? generation;
+            const editableChanged = editable !== view.editable;
+            editable = view.editable;
+            if (generation === nextGeneration && !editableChanged) {
+              return;
+            }
+            generation = nextGeneration;
+            controller.refreshAll();
+          },
+          destroy: () => controller.destroy(),
+        };
+      },
+    });
+
     return [
+      presentationPlugin,
       new Plugin({
         key: dropdownRepairPluginKey,
         state: {
@@ -489,87 +483,3 @@ export default class Dropdown extends Node {
     };
   }
 }
-
-const Wrapper = styled.span`
-  display: inline-flex;
-  vertical-align: baseline;
-`;
-
-const Chip = styled.button<{ $color: string }>`
-  align-items: center;
-  background: ${({ $color }) => $color};
-  border: 0;
-  border-radius: 999px;
-  color: #fff;
-  cursor: pointer;
-  display: inline-flex;
-  font: inherit;
-  font-size: 0.9em;
-  font-weight: 500;
-  gap: 4px;
-  line-height: 1.25;
-  margin: 0 1px;
-  padding: 1px 7px;
-  vertical-align: baseline;
-
-  &:disabled {
-    cursor: default;
-  }
-`;
-
-const Caret = styled.span`
-  font-size: 0.8em;
-  line-height: 1;
-  opacity: 0.85;
-`;
-
-const Menu = styled.span<{ $top: number; $left: number }>`
-  background: ${s("menuBackground")};
-  border-radius: 6px;
-  box-shadow: ${s("menuShadow")};
-  display: grid;
-  gap: 3px;
-  left: ${({ $left }) => `${$left}px`};
-  min-width: 180px;
-  padding: 8px;
-  position: fixed;
-  top: ${({ $top }) => `${$top}px`};
-  z-index: 1000;
-`;
-
-const MenuHeader = styled.span`
-  color: ${s("textSecondary")};
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 4px 6px 6px;
-  text-transform: uppercase;
-`;
-
-const MenuItem = styled.button`
-  background: transparent;
-  border: 0;
-  border-radius: 4px;
-  cursor: pointer;
-  display: flex;
-  font: inherit;
-  padding: 5px 6px;
-  text-align: left;
-
-  &[aria-checked="true"],
-  &:hover {
-    background: ${s("sidebarBackground")};
-  }
-`;
-
-const OptionPill = styled.span<{ $color: string }>`
-  background: ${({ $color }) => $color};
-  border-radius: 999px;
-  color: #fff;
-  display: inline-flex;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.25;
-  padding: 2px 7px;
-`;
