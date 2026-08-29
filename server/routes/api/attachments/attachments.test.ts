@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AttachmentPreset, CollectionPermission } from "@shared/types";
 import { UserMembership } from "@server/models";
 import Attachment from "@server/models/Attachment";
+import FileStorage from "@server/storage/files";
 import {
   buildUser,
   buildAdmin,
@@ -555,6 +556,30 @@ describe("#attachments.redirect", () => {
     });
     expect(res.status).toEqual(302);
     expect(res.headers.get("location")).toContain(attachment.canonicalUrl);
+  });
+
+  it("should sign public bucket attachments when storage is private", async () => {
+    Object.defineProperty(FileStorage, "requiresSignedUrls", { value: true });
+
+    try {
+      const attachment = await buildAttachment({
+        key: `public/${randomUUID()}/test.png`,
+        acl: "public-read",
+      });
+      const res = await server.post("/api/attachments.redirect", {
+        body: {
+          id: attachment.id,
+        },
+        redirect: "manual",
+      });
+
+      expect(res.status).toEqual(302);
+      expect(res.headers.get("location")).toContain(await attachment.signedUrl);
+    } finally {
+      Object.defineProperty(FileStorage, "requiresSignedUrls", {
+        value: false,
+      });
+    }
   });
 
   it("should return a redirect for a public-read attachment without authentication (not in public bucket)", async () => {

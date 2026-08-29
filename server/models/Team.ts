@@ -35,6 +35,7 @@ import { TeamValidation } from "@shared/validations";
 import env from "@server/env";
 import { ValidationError } from "@server/errors";
 import DeleteAttachmentTask from "@server/queues/tasks/DeleteAttachmentTask";
+import FileStorage from "@server/storage/files";
 import parseAttachmentIds from "@server/utils/parseAttachmentIds";
 import Attachment from "./Attachment";
 import AuthenticationProvider from "./AuthenticationProvider";
@@ -177,7 +178,7 @@ class Team extends ParanoidModel<
       return url;
     }
 
-    return attachment.isStoredInPublicBucket
+    return attachment.isStoredInPublicBucket && !FileStorage.requiresSignedUrls
       ? attachment.canonicalUrl
       : await attachment.signedUrl;
   }

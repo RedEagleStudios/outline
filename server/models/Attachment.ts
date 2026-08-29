@@ -115,7 +115,9 @@ class Attachment extends IdModel<
    * Get a url that can be used to download the attachment if the user has a valid session.
    */
   get url() {
-    return this.isPrivate ? this.redirectUrl : this.canonicalUrl;
+    return this.isPrivate || FileStorage.requiresSignedUrls
+      ? this.redirectUrl
+      : this.canonicalUrl;
   }
 
   /**

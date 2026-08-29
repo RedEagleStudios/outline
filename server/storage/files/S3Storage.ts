@@ -10,7 +10,10 @@ import {
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import "@aws-sdk/signature-v4-crt"; // https://github.com/aws/aws-sdk-js-v3#functionality-requiring-aws-common-runtime-crt
-import type { PresignedPostOptions } from "@aws-sdk/s3-presigned-post";
+import type {
+  PresignedPost,
+  PresignedPostOptions,
+} from "@aws-sdk/s3-presigned-post";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import fs from "fs-extra";
@@ -22,9 +25,19 @@ import Logger from "@server/logging/Logger";
 import BaseStorage from "./BaseStorage";
 import type { AppContext } from "@server/types";
 
+interface S3StorageOptions {
+  defaultCacheControl?: string;
+}
+
 export default class S3Storage extends BaseStorage {
-  constructor() {
+  /**
+   * Initializes S3-compatible file storage.
+   *
+   * @param options optional client configuration.
+   */
+  constructor(options: S3StorageOptions = {}) {
     super();
+    this.defaultCacheControl = options.defaultCacheControl;
 
     this.client = new S3Client({
       bucketEndpoint: env.AWS_S3_ACCELERATE_URL ? true : false,
@@ -40,7 +53,7 @@ export default class S3Storage extends BaseStorage {
     _acl: string,
     maxUploadSize: number,
     contentType = "image"
-  ) {
+  ): Promise<Partial<PresignedPost>> {
     const params: PresignedPostOptions = {
       Bucket: env.AWS_S3_UPLOAD_BUCKET_NAME as string,
       Key: key,
@@ -52,7 +65,8 @@ export default class S3Storage extends BaseStorage {
       Fields: {
         "Content-Disposition": this.getContentDisposition(contentType),
         key,
-        ...(env.AWS_S3_ACL && { ACL: env.AWS_S3_ACL as ObjectCannedACL }),
+        ...(this.supportsAcl &&
+          env.AWS_S3_ACL && { ACL: env.AWS_S3_ACL as ObjectCannedACL }),
       },
       Expires: 3600,
     };
@@ -113,10 +127,12 @@ export default class S3Storage extends BaseStorage {
     const upload = new Upload({
       client: this.client,
       params: {
-        ...(env.AWS_S3_ACL && { ACL: env.AWS_S3_ACL as ObjectCannedACL }),
+        ...(this.supportsAcl &&
+          env.AWS_S3_ACL && { ACL: env.AWS_S3_ACL as ObjectCannedACL }),
         Bucket: this.getBucket(),
         Key: key,
         ContentType: contentType,
+        CacheControl: this.defaultCacheControl,
         // See bug, if used causes large files to hang: https://github.com/aws/aws-sdk-js-v3/issues/3915
         // ContentLength: contentLength,
         ContentDisposition: this.getContentDisposition(contentType),
@@ -216,6 +232,18 @@ export default class S3Storage extends BaseStorage {
       .then(() => true)
       .catch(() => false);
   }
+  public async stat(key: string) {
+    const result = await this.client.send(
+      new HeadObjectCommand({
+        Bucket: this.getBucket(),
+        Key: key,
+      })
+    );
+
+    return {
+      size: result.ContentLength ?? 0,
+    };
+  }
 
   public moveFile = async (fromKey: string, toKey: string) => {
     await this.client.send(
@@ -255,7 +283,9 @@ export default class S3Storage extends BaseStorage {
       });
   }
 
-  private client: S3Client;
+  protected client: S3Client;
+  protected readonly supportsAcl: boolean = true;
+  protected defaultCacheControl: string | undefined;
 
   private getEndpoint() {
     if (env.AWS_S3_ACCELERATE_URL) {

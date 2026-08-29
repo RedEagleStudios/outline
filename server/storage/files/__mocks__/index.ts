@@ -1,4 +1,6 @@
 export default {
+  requiresSignedUrls: false,
+
   upload: jest.fn().mockReturnValue("/endpoint/key"),
 
   getUploadUrl: jest.fn().mockReturnValue("http://mock/create"),
@@ -8,4 +10,6 @@ export default {
   getSignedUrl: jest.fn().mockReturnValue("http://s3mock"),
 
   getPresignedPost: jest.fn().mockReturnValue({}),
+
+  stat: jest.fn().mockResolvedValue({ size: 0 }),
 };

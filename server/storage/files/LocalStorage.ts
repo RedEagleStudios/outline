@@ -11,7 +11,6 @@ import env from "@server/env";
 import { InternalError, ValidationError } from "@server/errors";
 import Logger from "@server/logging/Logger";
 import BaseStorage from "./BaseStorage";
-import { CSRF } from "@shared/constants";
 import type { AppContext } from "@server/types";
 
 export default class LocalStorage extends BaseStorage {
@@ -22,31 +21,13 @@ export default class LocalStorage extends BaseStorage {
     maxUploadSize: number,
     contentType = "image"
   ): Promise<Partial<PresignedPost>> {
-    // Mint a short-lived signature bound to the upload key. The signature
-    // authorizes a single POST to `/api/files.create` without requiring the
-    // caller to present a session cookie or bearer token – mirroring S3's
-    // presigned POST semantics for storage providers that cannot sign their
-    // own requests.
-    const sig = JWT.sign(
-      {
-        key,
-        type: "upload",
-      },
-      env.SECRET_KEY,
-      { expiresIn: 3600 }
+    return this.getProxyPresignedPost(
+      ctx,
+      key,
+      acl,
+      maxUploadSize,
+      contentType
     );
-
-    return Promise.resolve({
-      url: this.getUrlForKey(key),
-      fields: {
-        key,
-        acl,
-        maxUploadSize: String(maxUploadSize),
-        contentType,
-        sig,
-        [CSRF.fieldName]: ctx.cookies?.get(CSRF.cookieName) || "",
-      },
-    });
   }
 
   public getUploadUrl() {

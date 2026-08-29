@@ -1,15 +1,24 @@
 import type { Blob } from "node:buffer";
 import type { Readable } from "node:stream";
 import type { PresignedPost } from "@aws-sdk/s3-presigned-post";
+import JWT from "jsonwebtoken";
 import omit from "lodash/omit";
 import FileHelper from "@shared/editor/lib/FileHelper";
 import { isBase64Url, isInternalUrl } from "@shared/utils/urls";
 import { Week } from "@shared/utils/time";
+import { CSRF } from "@shared/constants";
 import env from "@server/env";
 import Logger from "@server/logging/Logger";
 import type { RequestInit } from "@server/utils/fetch";
 import fetch, { chromeUserAgent } from "@server/utils/fetch";
 import type { AppContext } from "@server/types";
+
+/**
+ * Minimal metadata shared by file storage providers.
+ */
+export interface FileStat {
+  size: number;
+}
 
 export default abstract class BaseStorage {
   /** The default number of seconds until a signed URL expires. */
@@ -20,6 +29,10 @@ export default abstract class BaseStorage {
    * AWS S3 Signature V4 presigned URLs must have an expiration date less than one week in the future.
    */
   public static maxSignedUrlExpires = Week.seconds;
+  /**
+   * Whether objects must be accessed through signed URLs.
+   */
+  public readonly requiresSignedUrls: boolean = false;
 
   /**
    * Returns a presigned post for uploading files to the storage provider.
@@ -257,6 +270,13 @@ export default abstract class BaseStorage {
   }
 
   public abstract getFileExists(key: string): Promise<boolean>;
+  /**
+   * Returns metadata for a file.
+   *
+   * @param key the path to the file.
+   * @returns the file metadata.
+   */
+  public abstract stat(key: string): Promise<FileStat>;
 
   public abstract moveFile(fromKey: string, toKey: string): Promise<void>;
 
@@ -288,6 +308,45 @@ export default abstract class BaseStorage {
     }
 
     return "attachment";
+  }
+
+  /**
+   * Returns an application-signed form that proxies an upload through Outline.
+   *
+   * @param ctx the request context.
+   * @param key the path to store the file at.
+   * @param acl the ACL recorded for the attachment.
+   * @param maxUploadSize the maximum upload size in bytes.
+   * @param contentType the content type of the file.
+   * @returns the signed upload form.
+   */
+  protected getProxyPresignedPost(
+    ctx: AppContext,
+    key: string,
+    acl: string,
+    maxUploadSize: number,
+    contentType: string
+  ): Partial<PresignedPost> {
+    const sig = JWT.sign(
+      {
+        key,
+        type: "upload",
+      },
+      env.SECRET_KEY,
+      { expiresIn: 3600 }
+    );
+
+    return {
+      url: this.getUrlForKey(key),
+      fields: {
+        key,
+        acl,
+        maxUploadSize: String(maxUploadSize),
+        contentType,
+        sig,
+        [CSRF.fieldName]: ctx.cookies?.get(CSRF.cookieName) || "",
+      },
+    };
   }
 
   /**

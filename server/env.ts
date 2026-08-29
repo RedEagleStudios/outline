@@ -577,7 +577,7 @@ export class Environment {
   );
 
   /**
-   * Access key ID for AWS S3.
+   * Access key ID for S3-compatible file storage.
    */
   @IsOptional()
   public AWS_ACCESS_KEY_ID = this.toOptionalString(
@@ -585,7 +585,7 @@ export class Environment {
   );
 
   /**
-   * Secret key for AWS S3.
+   * Secret key for S3-compatible file storage.
    */
   @IsOptional()
   @CannotUseWithout("AWS_ACCESS_KEY_ID")
@@ -639,7 +639,7 @@ export class Environment {
   /**
    * Which file storage system to use
    */
-  @IsIn(["local", "s3"])
+  @IsIn(["local", "s3", "r2"])
   public FILE_STORAGE = this.toOptionalString(environment.FILE_STORAGE) ?? "s3";
 
   /**
@@ -648,6 +648,12 @@ export class Environment {
   public FILE_STORAGE_LOCAL_ROOT_DIR =
     this.toOptionalString(environment.FILE_STORAGE_LOCAL_ROOT_DIR) ??
     "/var/lib/outline/data";
+  /**
+   * Whether R2 should fall back to local storage for objects not yet migrated.
+   */
+  public FILE_STORAGE_LOCAL_FALLBACK = this.toBoolean(
+    environment.FILE_STORAGE_LOCAL_FALLBACK ?? "false"
+  );
 
   /**
    * Set max allowed upload size for file attachments.

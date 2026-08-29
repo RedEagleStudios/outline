@@ -294,7 +294,7 @@ const handleAttachmentsRedirect = async (
     }
   );
 
-  if (attachment.isStoredInPublicBucket) {
+  if (attachment.isStoredInPublicBucket && !FileStorage.requiresSignedUrls) {
     ctx.set("Cache-Control", `max-age=604800, immutable`);
     ctx.redirect(attachment.canonicalUrl);
   } else {

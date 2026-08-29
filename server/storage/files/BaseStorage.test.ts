@@ -59,6 +59,9 @@ class MockStorage extends BaseStorage {
   async getFileExists() {
     return false;
   }
+  async stat() {
+    return { size: 0 };
+  }
 
   async moveFile() {}
 

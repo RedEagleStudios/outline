@@ -19,7 +19,6 @@ import { Attachment } from "@server/models";
 import AttachmentHelper from "@server/models/helpers/AttachmentHelper";
 import { authorize } from "@server/policies";
 import FileStorage from "@server/storage/files";
-import type LocalStorage from "@server/storage/files/LocalStorage";
 import type { APIContext } from "@server/types";
 import { RateLimiterStrategy } from "@server/utils/RateLimiter";
 import { getJWTPayload } from "@server/utils/jwt";
@@ -132,6 +131,19 @@ router.get(
 
       authorize(actor, "read", attachment);
     }
+    if (FileStorage.requiresSignedUrls) {
+      const signedUrl = await FileStorage.getSignedUrl(key);
+      const target = new URL(signedUrl, env.URL);
+      const application = new URL(env.URL);
+
+      if (
+        target.origin !== application.origin ||
+        target.pathname !== "/api/files.get"
+      ) {
+        ctx.redirect(signedUrl);
+        return;
+      }
+    }
 
     const contentType =
       attachment?.contentType ||
@@ -166,7 +178,7 @@ router.get(
 
     // Handle byte range requests
     // https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
-    const stats = await (FileStorage as LocalStorage).stat(key);
+    const stats = await FileStorage.stat(key);
     const range = getByteRange(ctx, stats.size);
 
     if (range) {
