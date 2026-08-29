@@ -272,7 +272,7 @@ The fork is deployed on Railway, so the container build and runtime assumptions 
 - Local storage upload behavior was adjusted to support signed presigned POST semantics while still using local storage.
 - `FILE_STORAGE=r2` uses server-proxied uploads because R2 does not support S3 presigned POST forms. Downloads redirect to short-lived signed R2 URLs so media bytes do not transit Railway.
 - R2 uses bucket-scoped S3 credentials through `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. For Cloudflare auth tokens, the access key is the token ID and the S3 secret is the SHA-256 hash of the one-time token value.
-- `FILE_STORAGE_LOCAL_FALLBACK=true` is a temporary migration mode. Reads prefer R2 and fall back to `FILE_STORAGE_LOCAL_ROOT_DIR`, while deletes and moves affect both providers.
+- `FILE_STORAGE_FALLBACK` names the alternate provider during migration. Production uses `FILE_STORAGE=r2` with `FILE_STORAGE_FALLBACK=local`; rollback reverses those values so R2-only uploads remain readable.
 - The resumable migration script preserves object keys, skips matching objects, supports bounded concurrency and dry runs, and can SHA-256 verify every copied object.
 - R2 buckets remain private because R2 does not implement S3 object ACLs. Public-prefix avatars and legacy `/api/files.get` media therefore resolve through signed URLs when R2 is active.
 

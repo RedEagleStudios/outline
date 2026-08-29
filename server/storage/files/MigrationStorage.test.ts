@@ -98,6 +98,15 @@ describe("MigrationStorage", () => {
     expect(await storage.stat("uploads/image.png")).toEqual({ size: 8 });
   });
 
+  it("keeps R2-only objects readable after rolling back to local", async () => {
+    primary.files.set("uploads/new.png", Buffer.from("r2-only"));
+    const rollback = new MigrationStorage(fallback, primary);
+
+    expect(await rollback.getSignedUrl("uploads/new.png")).toEqual(
+      "r2/signed/uploads/new.png"
+    );
+  });
+
   it("deletes both copies", async () => {
     primary.files.set("uploads/image.png", Buffer.from("primary"));
     fallback.files.set("uploads/image.png", Buffer.from("fallback"));

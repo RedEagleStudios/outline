@@ -4,19 +4,22 @@ import { MigrationStorage } from "./MigrationStorage";
 import { R2Storage } from "./R2Storage";
 import S3Storage from "./S3Storage";
 
-const storage = (() => {
-  if (env.FILE_STORAGE === "local") {
+const getStorage = (provider: string) => {
+  if (provider === "local") {
     return new LocalStorage();
   }
 
-  if (env.FILE_STORAGE === "r2") {
-    const primary = new R2Storage();
-    return env.FILE_STORAGE_LOCAL_FALLBACK
-      ? new MigrationStorage(primary, new LocalStorage())
-      : primary;
+  if (provider === "r2") {
+    return new R2Storage();
   }
 
   return new S3Storage();
-})();
+};
+
+const primary = getStorage(env.FILE_STORAGE);
+const storage =
+  env.FILE_STORAGE_FALLBACK && env.FILE_STORAGE_FALLBACK !== env.FILE_STORAGE
+    ? new MigrationStorage(primary, getStorage(env.FILE_STORAGE_FALLBACK))
+    : primary;
 
 export default storage;

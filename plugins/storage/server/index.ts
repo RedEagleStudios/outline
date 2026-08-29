@@ -8,7 +8,7 @@ import {
 } from "@server/utils/PluginManager";
 import router from "./api/files";
 
-if (env.FILE_STORAGE === "local" || env.FILE_STORAGE_LOCAL_FALLBACK) {
+if (env.FILE_STORAGE === "local" || env.FILE_STORAGE_FALLBACK === "local") {
   const rootDir = env.FILE_STORAGE_LOCAL_ROOT_DIR;
   try {
     if (!existsSync(rootDir)) {

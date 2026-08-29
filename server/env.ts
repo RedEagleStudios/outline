@@ -649,10 +649,12 @@ export class Environment {
     this.toOptionalString(environment.FILE_STORAGE_LOCAL_ROOT_DIR) ??
     "/var/lib/outline/data";
   /**
-   * Whether R2 should fall back to local storage for objects not yet migrated.
+   * Optional fallback provider used while migrating between local storage and R2.
    */
-  public FILE_STORAGE_LOCAL_FALLBACK = this.toBoolean(
-    environment.FILE_STORAGE_LOCAL_FALLBACK ?? "false"
+  @IsOptional()
+  @IsIn(["local", "r2"])
+  public FILE_STORAGE_FALLBACK = this.toOptionalString(
+    environment.FILE_STORAGE_FALLBACK
   );
 
   /**
