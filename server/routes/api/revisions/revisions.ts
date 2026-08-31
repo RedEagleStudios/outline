@@ -268,7 +268,9 @@ router.post(
       paranoid: false,
     });
     const data = await Promise.all(
-      revisions.map((revision) => presentRevision(revision))
+      revisions.map((revision) =>
+        presentRevision(revision, { includeText: false })
+      )
     );
 
     ctx.body = {

@@ -333,6 +333,8 @@ The fork supports structured table operations through API and MCP tooling so age
 - `server/routes/api/documents/schema.ts`
 - `server/commands/documentUpdater.ts`
 - `server/commands/documentUpdater.test.ts`
+- `server/presenters/revision.ts`
+- `server/routes/api/revisions/revisions.ts`
 
 **Rationale:**
 
@@ -343,6 +345,7 @@ The branch adds richer document history behavior, including comparing arbitrary 
 - History-related components were moved under `app/scenes/Document/components/History/`.
 - `useDocumentSave` separates save behavior from the main document component.
 - Preserve server-side revision comparison and document updater tests during sync.
+- Revision list responses retain ProseMirror `data` for comparisons but omit redundant Markdown `text`; `revisions.info` still returns both. This prevents large histories from serializing each revision twice and blocking unrelated API requests.
 
 ### 5. Sidebar Refactor And Navigation Controls
 
