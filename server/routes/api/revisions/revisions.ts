@@ -259,6 +259,9 @@ router.post(
     authorize(user, "listRevisions", document);
 
     const revisions = await Revision.findAll({
+      attributes: {
+        exclude: ["content", "text"],
+      },
       where: {
         documentId: document.id,
       },
