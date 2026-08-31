@@ -275,6 +275,7 @@ The fork is deployed on Railway, so the container build and runtime assumptions 
 - `FILE_STORAGE_FALLBACK` names the alternate provider during migration. Production uses `FILE_STORAGE=r2` with `FILE_STORAGE_FALLBACK=local`; rollback reverses those values so R2-only uploads remain readable.
 - The resumable migration script preserves object keys, skips matching objects, supports bounded concurrency and dry runs, and can SHA-256 verify every copied object.
 - R2 buckets remain private because R2 does not implement S3 object ACLs. Public-prefix avatars and legacy `/api/files.get` media therefore resolve through signed URLs when R2 is active.
+- Keep `AWS_S3_ACL=private` for R2 so attachment rows pass ACL validation. `R2Storage` suppresses unsupported S3 ACL headers independently of the attachment metadata value.
 
 ### 2. AI-Agent-Friendly Document Editing API
 
