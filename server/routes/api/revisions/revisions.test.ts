@@ -188,7 +188,7 @@ describe("#revisions.list", () => {
     expect(body.data.length).toEqual(1);
     expect(body.data[0].id).not.toEqual(document.id);
     expect(body.data[0].title).toEqual(document.title);
-    expect(body.data[0].data).toBeDefined();
+    expect(body.data[0].data).toBeUndefined();
     expect(body.data[0].text).toBeUndefined();
   });
 

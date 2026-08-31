@@ -1,4 +1,3 @@
-import isEqual from "fast-deep-equal";
 import orderBy from "lodash/orderBy";
 import { observer } from "mobx-react";
 import * as React from "react";
@@ -193,8 +192,9 @@ function History() {
       const latestRevision = revisions.get(latestRevisionEvent.id);
 
       const isDocUpdated =
-        latestRevision?.title !== document.title ||
-        !isEqual(latestRevision.data, document.data);
+        !latestRevision ||
+        latestRevision.title !== document.title ||
+        latestRevision.createdAt < document.updatedAt;
 
       if (isDocUpdated) {
         const createdById = document.updatedBy?.id ?? "";

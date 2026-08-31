@@ -119,7 +119,7 @@ function DataLoader({ match, children }: Props) {
             await revisions.fetchLatest(document.id);
           }
         } else {
-          await revisions.fetch(id);
+          await revisions.fetch(id, { force: true });
         }
       } catch (err) {
         onError(err as Error);
@@ -133,6 +133,15 @@ function DataLoader({ match, children }: Props) {
       void fetchRevisionById(revisionId, setError);
     }
   }, [fetchRevisionById, revisionId]);
+
+  const previousRevisionId = revisionId ? revision?.before?.id : undefined;
+  React.useEffect(() => {
+    if (previousRevisionId) {
+      void fetchRevisionById(previousRevisionId, (err) =>
+        Logger.error("Failed to fetch previous revision", err)
+      );
+    }
+  }, [fetchRevisionById, previousRevisionId]);
 
   const compareTo = query.get("compareTo");
 
@@ -249,7 +258,7 @@ function DataLoader({ match, children }: Props) {
     return <Error404 />;
   }
 
-  if (!document || (revisionId && !revision)) {
+  if (!document || (revisionId && (!revision || !revision.data))) {
     return (
       <>
         <Loading location={location} />

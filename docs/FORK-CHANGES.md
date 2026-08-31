@@ -345,7 +345,7 @@ The branch adds richer document history behavior, including comparing arbitrary 
 - History-related components were moved under `app/scenes/Document/components/History/`.
 - `useDocumentSave` separates save behavior from the main document component.
 - Preserve server-side revision comparison and document updater tests during sync.
-- Revision list responses retain ProseMirror `data` for comparisons but omit redundant Markdown `text`; `revisions.info` still returns both. This prevents large histories from serializing each revision twice and blocking unrelated API requests.
+- Revision list responses contain only history metadata. Selected, comparison, and previous revisions are fetched through `revisions.info`, which retains full ProseMirror `data` and Markdown `text`. This prevents large histories from serializing every revision twice and blocking unrelated API requests.
 
 ### 5. Sidebar Refactor And Navigation Controls
 

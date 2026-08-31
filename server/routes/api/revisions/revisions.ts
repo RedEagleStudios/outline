@@ -269,7 +269,7 @@ router.post(
     });
     const data = await Promise.all(
       revisions.map((revision) =>
-        presentRevision(revision, { includeText: false })
+        presentRevision(revision, { includeData: false, includeText: false })
       )
     );
 

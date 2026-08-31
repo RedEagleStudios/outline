@@ -5,6 +5,7 @@ import { DocumentHelper } from "@server/models/helpers/DocumentHelper";
 import presentUser from "./user";
 
 interface PresentRevisionOptions {
+  includeData?: boolean;
   includeText?: boolean;
 }
 
@@ -23,7 +24,7 @@ async function presentRevision(
   const { emoji, strippedTitle } = parseTitle(revision.title);
 
   const [data, text, collaborators] = await Promise.all([
-    DocumentHelper.toJSON(revision),
+    options.includeData === false ? undefined : DocumentHelper.toJSON(revision),
     options.includeText === false
       ? undefined
       : DocumentHelper.toMarkdown(revision),
@@ -35,7 +36,7 @@ async function presentRevision(
     documentId: revision.documentId,
     title: strippedTitle,
     name: revision.name,
-    data,
+    ...(data !== undefined && { data }),
     ...(text !== undefined && { text }),
     icon: revision.icon ?? emoji,
     color: revision.color,
