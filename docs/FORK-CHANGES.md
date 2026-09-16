@@ -176,6 +176,7 @@ The fork adds an MVP Google Docs-style dropdown chip for documents. Dropdowns ar
 
 - The default `Status` dropdown contains `Design`, `Open Issue`, `In Progress`, `QA`, `Solved`, `Ignored`, and `Ready To Test` options.
 - Dropdown definitions are stored in hidden `dropdown_definition` nodes; chips store `dropdownId` and `selectedOptionId`.
+- Editing cannot remove a definition still referenced by surviving chips. The definition plugin restores deleted metadata at the document end, preventing Backspace after a table or a range deletion from making every reference-only chip display the fallback `Design` option. Deleting all related chips still allows their metadata to be removed; replacement definitions and undo/redo remain supported.
 - The slash menu exposes workspace dropdown types under `Dropdown` and includes `New workspace dropdown...` and editor/admin `Edit workspace dropdown...` form flows with color pickers for option colors. Legacy document-local dropdowns remain readable in existing documents but are hidden from the insertion menu.
 - Workspace dropdown templates are stored per team and copied into documents when inserted so document Markdown remains portable.
 - Markdown serialization writes definitions as `<!-- outline-dropdown {...} -->` comments and chips as `{dropdown:status|open}`.
