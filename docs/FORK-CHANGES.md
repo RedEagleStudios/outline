@@ -64,6 +64,19 @@ Clean isolation and a full clean-build verification are mandatory before rollout
 
 Heading folding is a personal browser preference and must not alter collaborative document content. Headings default to expanded when no browser-local preference exists. Collapse state now lives in browser storage and position-targeted ProseMirror plugin metadata, so no fold boolean is represented in collaborative content or synchronized through Yjs. Legacy serialized `collapsed` data from server-side document content is accepted as an unknown attribute and ignored/dropped when ProseMirror loads the heading. Document-order duplicate keys keep matching headings independently foldable, and local fold decorations are reconciled after structural document changes so remotely inserted section content remains hidden.
 
+### Browser-Local Scroll Position Restoration
+
+**Files:**
+
+- `app/components/ScrollToTop.ts`
+- `app/utils/scrollPositions.ts`
+- `shared/types.ts`, `shared/constants.ts` (`UserPreference.RestoreScrollPosition`, default on)
+- `app/scenes/Settings/Preferences.tsx`
+
+**Rationale and implementation notes:**
+
+Moving between pages inside Outline used to always reset to the top. With the user preference enabled, the last scroll offset of each route is stored in browser `localStorage` (`scrollPositions`, keyed by pathname with `/edit` stripped, 200 most recent routes) and restored on any later visit, including reloads. Saving happens on scroll after a short debounce, and pending offsets are flushed in a layout effect before the browser clamps the old offset against the new route's content. Because document content loads asynchronously, the restored offset is re-applied every animation frame for up to 3 seconds and is cancelled as soon as the user scrolls, touches, clicks, or types. URL hashes, `retainScrollPosition` navigation state, and edit-mode toggles keep their upstream behaviour. Anonymous/public-share viewers are unaffected, and `history.scrollRestoration` is set to `manual` only while the preference is enabled.
+
 ### Current Development: Excalidraw-in-Docs MVP
 
 **Files:**

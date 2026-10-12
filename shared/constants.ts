@@ -42,6 +42,7 @@ export const TeamPreferenceDefaults: TeamPreferences = {
 
 export const UserPreferenceDefaults: UserPreferences = {
   [UserPreference.RememberLastPath]: true,
+  [UserPreference.RestoreScrollPosition]: true,
   [UserPreference.UseCursorPointer]: true,
   [UserPreference.CodeBlockLineNumers]: true,
   [UserPreference.SortCommentsByOrderInDocument]: true,

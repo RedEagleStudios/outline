@@ -91,6 +91,15 @@ function Preferences() {
     [user, t]
   );
 
+  const handleRestoreScrollPositionChange = React.useCallback(
+    async (checked: boolean) => {
+      user.setPreference(UserPreference.RestoreScrollPosition, checked);
+      await user.save();
+      toast.success(t("Preferences saved"));
+    },
+    [user, t]
+  );
+
   const handleEnableSmartTextChange = React.useCallback(
     async (checked: boolean) => {
       user.setPreference(UserPreference.EnableSmartText, checked);
@@ -274,6 +283,20 @@ function Preferences() {
           name={UserPreference.RememberLastPath}
           checked={!!user.getPreference(UserPreference.RememberLastPath)}
           onChange={handleRememberLastPathChange}
+        />
+      </SettingRow>
+      <SettingRow
+        name={UserPreference.RestoreScrollPosition}
+        label={t("Restore scroll position")}
+        description={t(
+          "Return to where you left off when you navigate back to a page. Positions are stored in this browser."
+        )}
+      >
+        <Switch
+          id={UserPreference.RestoreScrollPosition}
+          name={UserPreference.RestoreScrollPosition}
+          checked={!!user.getPreference(UserPreference.RestoreScrollPosition)}
+          onChange={handleRestoreScrollPositionChange}
         />
       </SettingRow>
       <SettingRow

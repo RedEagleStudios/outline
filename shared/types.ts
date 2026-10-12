@@ -308,6 +308,8 @@ export type IntegrationSettings<T> = T extends IntegrationType.Embed
 export enum UserPreference {
   /** Whether reopening the app should redirect to the last viewed document. */
   RememberLastPath = "rememberLastPath",
+  /** Whether pages should return to their last scroll position when revisited. */
+  RestoreScrollPosition = "restoreScrollPosition",
   /** If web-style hand pointer should be used on interactive elements. */
   UseCursorPointer = "useCursorPointer",
   /** Whether code blocks should show line numbers. */
@@ -335,6 +337,7 @@ export enum NotificationBadgeType {
 
 export type UserPreferences = {
   [UserPreference.RememberLastPath]?: boolean;
+  [UserPreference.RestoreScrollPosition]?: boolean;
   [UserPreference.UseCursorPointer]?: boolean;
   [UserPreference.CodeBlockLineNumers]?: boolean;
   [UserPreference.SeamlessEdit]?: boolean;
