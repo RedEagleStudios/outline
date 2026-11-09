@@ -261,6 +261,24 @@ The fork restores Google Docs-style image movement in the editor. Native browser
 - If an internal image drag lands where ProseMirror cannot compute a drop point, the drop is cancelled before the browser's native contenteditable fallback can insert a copy.
 - The outer editor padding drop zone ignores active ProseMirror drags instead of parsing their drag HTML and appending a duplicate image at the end of the document.
 
+### Current Development: Inline Audio Attachment Player
+
+**Files:**
+
+- `shared/editor/nodes/Attachment.tsx`
+- `shared/editor/components/AudioPlayer.tsx`
+
+**Rationale:**
+
+Upstream renders audio uploads as generic file attachment widgets, so reviewing sound effects in a document meant downloading each file one by one. The fork renders audio attachments with an inline player.
+
+**Implementation Notes:**
+
+- Attachment nodes whose `contentType` is `audio/*` render a header (extension icon, title, size) above a native `<audio controls preload="metadata">` element. No schema or stored-content change; existing audio attachments pick this up automatically.
+- The header keeps attachment behavior: mousedown selects the node, double-click downloads, and read-only views show a download link.
+- Attachments without a stored `contentType` (for example, nodes created from Markdown) still render the generic widget.
+- Playback relies on `/api/attachments.redirect`; `BaseStorage.getContentDisposition` already serves `audio/*` inline. Browser codec support applies (Ogg Vorbis/Opus needs a recent Safari).
+
 ### 1. Railway And Container Compatibility
 
 **Files:**

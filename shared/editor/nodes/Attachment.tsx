@@ -11,8 +11,10 @@ import { Trans } from "react-i18next";
 import type { Primitive } from "utility-types";
 import { bytesToHumanReadable, getEventFiles } from "../../utils/files";
 import { sanitizeUrl } from "../../utils/urls";
+import FileHelper from "../lib/FileHelper";
 import insertFiles from "../commands/insertFiles";
 import toggleWrap from "../commands/toggleWrap";
+import AudioPlayer from "../components/AudioPlayer";
 import FileExtension from "../components/FileExtension";
 import Widget from "../components/Widget";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
@@ -126,6 +128,20 @@ export default class Attachment extends Node {
         <Trans>Uploading</Trans>…
       </>
     );
+
+    if (node.attrs.contentType && FileHelper.isAudio(node.attrs.contentType)) {
+      return (
+        <AudioPlayer
+          icon={<FileExtension title={node.attrs.title} />}
+          context={context}
+          onMouseDown={this.handleSelect(props)}
+          onDoubleClick={() => {
+            this.editor.commands.downloadAttachment();
+          }}
+          {...props}
+        />
+      );
+    }
 
     return node.attrs.preview &&
       !embedsDisabled &&
