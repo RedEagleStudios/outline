@@ -23,7 +23,10 @@ import { CSVHelper } from "../../utils/csv";
 import { isCurrency, parseCurrency } from "../../utils/currency";
 import { parseDate } from "../../utils/date";
 import { chainTransactions } from "../lib/chainTransactions";
-import { getDropdownDefinition } from "../lib/dropdowns";
+import {
+  getDropdownDefinition,
+  getSelectedDropdownOption,
+} from "../lib/dropdowns";
 import {
   getAllSelectedColumns,
   getCellsInColumn,
@@ -411,11 +414,26 @@ export function sortTable({
       );
 
       // remove the header row
-      const header = hasHeaderRow ? rows.shift() : undefined;
+      let header = hasHeaderRow ? rows.shift() : undefined;
 
-      // Helper to get cell content at column index
-      const getCellContent = (row: TableRow): string =>
-        row.columnMap.get(index)?.textContent ?? "";
+      // Text for comparisons, with dropdown chips resolved against document
+      // definitions. The schema's leafText cannot see the document, so it
+      // would label reference-only workspace chips with the default option.
+      const getCellContent = (row: TableRow): string => {
+        const cell = row.columnMap.get(index);
+        if (!cell) {
+          return "";
+        }
+
+        return cell.textBetween(0, cell.content.size, undefined, (leaf) =>
+          leaf.type.name === "dropdown"
+            ? getSelectedDropdownOption(
+                getDropdownDefinition(state.doc, leaf.attrs),
+                leaf.attrs.selectedOptionId
+              ).label
+            : (leaf.type.spec.leafText?.(leaf) ?? "")
+        );
+      };
 
       interface DropdownSortKey {
         dropdownId: string;
@@ -468,14 +486,36 @@ export function sortTable({
       // column data before sort
       const columnData = rows.map(getCellContent);
       const dropdownKeys = rows.map(getDropdownSortKey);
-      const dropdownId = dropdownKeys.find((key) => key)?.dropdownId;
-      const compareAsDropdown =
-        dropdownId !== undefined &&
-        dropdownKeys.every((key, rowIndex) =>
-          key
-            ? key.dropdownId === dropdownId
-            : columnData[rowIndex].trim().length === 0
+
+      // A column sorts by option order when every cell from `start` is either
+      // a chip of one dropdown or blank.
+      const isDropdownColumn = (start: number): boolean => {
+        const keys = dropdownKeys.slice(start);
+        const dropdownId = keys.find((key) => key)?.dropdownId;
+        return (
+          dropdownId !== undefined &&
+          keys.every((key, offset) =>
+            key
+              ? key.dropdownId === dropdownId
+              : columnData[start + offset].trim().length === 0
+          )
         );
+      };
+
+      // Tables whose first row uses body cells commonly label a dropdown
+      // column with plain text; keep that label row in place.
+      if (
+        !header &&
+        !dropdownKeys[0] &&
+        columnData[0]?.trim() &&
+        isDropdownColumn(1)
+      ) {
+        header = rows.shift();
+        columnData.shift();
+        dropdownKeys.shift();
+      }
+
+      const compareAsDropdown = isDropdownColumn(0);
       const dropdownKeysByRow = new Map(
         rows.map((row, rowIndex) => [row, dropdownKeys[rowIndex]])
       );

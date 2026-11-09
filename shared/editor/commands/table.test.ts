@@ -1,6 +1,7 @@
 import {
   DOMParser as ProsemirrorDOMParser,
   DOMSerializer,
+  type Node as ProsemirrorNode,
 } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
@@ -244,6 +245,100 @@ describe("sortTable", () => {
     const sortedTable = selectedState.apply(transaction).doc.firstChild;
     expect(sortedTable?.child(0).child(1).textContent).toBe("Plain");
     expect(sortedTable?.child(1).child(1).textContent).toBe("Dropdown");
+  });
+
+  describe("priority dropdown columns", () => {
+    const priorityDefinition = schema.nodes.dropdown_definition.create({
+      id: "workspace-priority",
+      name: "Priority",
+      options: [
+        { id: "p0", label: "P0", color: "#BA1A1A" },
+        { id: "p1", label: "P1", color: "#D97706" },
+        { id: "p2", label: "P2", color: "#17834F" },
+      ],
+    });
+
+    function priorityCell(selectedOptionId: string) {
+      return schema.nodes.td.create(
+        null,
+        schema.nodes.paragraph.create(
+          null,
+          schema.nodes.dropdown.create({
+            id: `priority-${selectedOptionId}`,
+            dropdownId: "workspace-priority",
+            selectedOptionId,
+          })
+        )
+      );
+    }
+
+    function sortedRowLabels(
+      rows: ProsemirrorNode[],
+      direction: "asc" | "desc"
+    ): string[] {
+      const state = createEditorState(doc([table(rows), priorityDefinition]));
+      const selectedState = state.apply(
+        state.tr.setSelection(
+          TextSelection.create(state.doc, getTextPosition(state, "Select"))
+        )
+      );
+      let transaction: Transaction | undefined;
+
+      sortTable({ index: 0, direction })(selectedState, (tr) => {
+        transaction = tr;
+      });
+      if (!transaction) {
+        throw new Error("Expected sortTable to dispatch a transaction");
+      }
+
+      const sortedTable = selectedState.apply(transaction).doc.firstChild;
+      if (!sortedTable) {
+        throw new Error("Expected a sorted table");
+      }
+
+      return Array.from(
+        { length: sortedTable.childCount },
+        (_, index) => sortedTable.child(index).child(1).textContent
+      );
+    }
+
+    const labelledRows = [
+      tr([td("Priority"), td("Select")]),
+      tr([priorityCell("p2"), td("Low")]),
+      tr([priorityCell("p0"), td("Urgent")]),
+      tr([td(""), td("Unset")]),
+      tr([priorityCell("p1"), td("Normal")]),
+    ];
+
+    it("keeps a plain-text label row first in tables without header cells", () => {
+      expect(sortedRowLabels(labelledRows, "asc")).toEqual([
+        "Select",
+        "Urgent",
+        "Normal",
+        "Low",
+        "Unset",
+      ]);
+      expect(sortedRowLabels(labelledRows, "desc")).toEqual([
+        "Select",
+        "Low",
+        "Normal",
+        "Urgent",
+        "Unset",
+      ]);
+    });
+
+    it("text sorts mixed columns by document dropdown labels", () => {
+      expect(
+        sortedRowLabels(
+          [
+            tr([priorityCell("p1"), td("Select")]),
+            tr([td("Note"), td("Plain")]),
+            tr([priorityCell("p0"), td("Urgent")]),
+          ],
+          "asc"
+        )
+      ).toEqual(["Plain", "Urgent", "Select"]);
+    });
   });
 });
 
